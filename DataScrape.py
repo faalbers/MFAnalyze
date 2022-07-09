@@ -7,7 +7,7 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 
-def setLogger(filename, new=True, timed=False):
+def setupLogging(filename, new=True, timed=False):
     filemode = 'a'
     if new: filemode = 'w'
     formatStr = '%(message)s'
@@ -19,12 +19,29 @@ def setLogger(filename, new=True, timed=False):
         format=formatStr, datefmt=datefmtStr
         )
 
+def getLogger(filename, new=True, timed=False):
+    filemode = 'a'
+    if new: filemode = 'w'
+    formatStr = '%(message)s'
+    datefmtStr = '%m/%d/%Y %I:%M:%S %p'
+    if timed:
+        formatStr = '%(asctime)s: %(message)s'
+    formatter = logging.Formatter(formatStr, datefmt=datefmtStr)
+    fhandler = logging.FileHandler(filename, encoding='utf-8', mode=filemode)
+    fhandler.setFormatter(formatter)
+    logger = logging.getLogger(filename)
+    logger.setLevel(logging.INFO)
+    logger.addHandler(fhandler)
+    return logger
+
 def getData(fileName):
     dataFile = '%s.pickle' % fileName
     data = {}
     if exists(dataFile):
         with open(dataFile, 'rb') as f:
             data = pickle.load(f)
+    else:
+        logging.info('data file not found: %s' % dataFile)
     return data
 
 def saveData(data, fileName):
@@ -64,14 +81,14 @@ def getStatusCode(url, maxRetries=10):
     retries = -1
     while(retries < maxRetries and statusCode == 500):
         retries = retries + 1
-        r = requests.head(url, headers=headers)
+        r = requests.get(url, headers=headers, allow_redirects=False)
         statusCode = r.status_code
     return statusCode    
 
-# def getStatusCodes(urls):
-#     cpuCount = cpu_count() * 4
-#     multiPool = Pool(cpuCount)
-#     return multiPool.map(getStatusCode, urls)
+def getStatusCodes(urls):
+    cpuCount = cpu_count() * 4
+    multiPool = Pool(cpuCount)
+    return multiPool.map(getStatusCode, urls)
 
 # def urlScrapeProc(url, scrapeProc):
 #     headers =  {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36'}
@@ -83,7 +100,7 @@ def getStatusCode(url, maxRetries=10):
 #         statusCode = r.status_code
 
 #     if retries > 0:
-#         logger.info('%s statusCodeProc retries on %s' % (retries, url))
+#         logging.info('%s statusCodeProc retries on %s' % (retries, url))
     
 #     if statusCode == 404: return None
 
@@ -128,48 +145,67 @@ def getStatusCode(url, maxRetries=10):
 # def multiScrapeError(poolVariables, results, indices=False):
 #     return multiScrapeStatusCode(poolVariables, results, 500, indices)
 
-def unblockSleep(poolVariable, scrapeProc):
+def unblockSleep(poolVariable, scrapeProc, retryStatusCode):
     sleepTime = 0
     timeIncrement = 5
     blocked = True
     while blocked:
         data = scrapeProc(poolVariable)
-        if data[0] != 403: break
+        if data[0] != retryStatusCode: break
         sleepTime += timeIncrement
         time.sleep(timeIncrement)
     return sleepTime
 
-def multiScrape(poolVariables, scrapeProc):
+def multiScrape(poolVariables, scrapeProc, retryStatusCode=None):
+    # fill temporary empty data list
     data = [ [None] * len(poolVariables), [None] * len(poolVariables)]
+
+    # create index list to pool variables
     pVarIndices = list(range(len(poolVariables)))
+
     cpuCount = cpu_count() * 4
     multiPool = Pool(cpuCount)
     while len(pVarIndices) != 0:
+        # check index list of pool variables that still need to be done
+        # and create current poolVariables
         pVarsRetry = [poolVariables[i] for i in pVarIndices]
+
+        # run multi scrape on them
         results = multiPool.map(scrapeProc, pVarsRetry)
+
+        # create lists of statusCodes and data
         rStatusCodes = []
         rData = []
         for result in results:
             rStatusCodes.append(result[0])
             rData.append(result[1])
         
+        # go through status codes and find retry codes
+        # retrieve the retry poolVariable indices 
         pVarIndex = 0
         pVarBlockedIndices = []
         for statusCode in rStatusCodes:
-            if statusCode == 403:
+            if retryStatusCode != None and statusCode == retryStatusCode:
+                # add to retry pool
                 pVarBlockedIndices.append(pVarIndices[pVarIndex])
             else:
+                # fill in done data
                 data[0][pVarIndices[pVarIndex]] = statusCode
                 data[1][pVarIndices[pVarIndex]] = rData[pVarIndex]
             pVarIndex += 1
         
+        # if none need to be retried empty the indices list 
         if len(pVarBlockedIndices) == 0:
+            # if none need to be retried empty the indices list 
             pVarIndices = []
         else:
+            # setup next indices list and do a sleep before retry
             pVarIndices = pVarBlockedIndices
-            logger.info('retrying %s blocked attempts' % len(pVarBlockedIndices))
-            sleepTime = unblockSleep(pVarsRetry[0], scrapeProc)
-            logger.info('slept %s seconds' % sleepTime)
+
+            # keep retrying first blocked one till status code isn't blocked
+            logging.info('retrying %s blocked attempts' % len(pVarBlockedIndices))
+            sleepTime = unblockSleep(pVarsRetry[0], scrapeProc, retryStatusCode)
+            logging.info('slept %s seconds' % sleepTime)
     return data
 
 # def startWebdrivers(driversCount):
