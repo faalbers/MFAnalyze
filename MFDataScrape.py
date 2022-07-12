@@ -5,6 +5,18 @@ import time, logging, requests
 
 # --- TOOLS ---
 
+def setupLogging(filename, new=True, timed=False):
+    filemode = 'a'
+    if new: filemode = 'w'
+    formatStr = '%(message)s'
+    datefmtStr = '%m/%d/%Y %I:%M:%S %p'
+    if timed:
+        formatStr = '%(asctime)s: %(message)s'
+    logging.basicConfig(
+        filename=filename, encoding='utf-8', level=logging.INFO, filemode=filemode,
+        format=formatStr, datefmt=datefmtStr
+        )
+
 def cleanUpAttributes(attributes, capitalize=True):
     data = {}
     for attr, value in attributes.items():
@@ -132,31 +144,22 @@ def attributeCheck(attribute):
 # def getScrapeTimeSince(dataFileName, scrapeTag):
 #     return (datetime.now() - getScrapeTime(dataFileName, scrapeTag))
 
-def symbolsNeedScrape(dataFileName, scrapeTag, seconds=0, minutes=0, hours=0, days=0):
+def symbolsNeedScrape(MFData, dataName, seconds=0, minutes=0, hours=0, days=0):
+    if not 'Symbols' in MFData: return []
+    symbols = list(MFData['Symbols'])
+    symbols.sort()
+    if not dataName in MFData: return symbols
     minuteSecs = 60
     hourSecs = minuteSecs * 60
     daySecs = hourSecs * 24
     totalSecs = days * daySecs + hours * hourSecs + minutes * minuteSecs + seconds
     nowTime = datetime.now()
-    MFData = DS.getData(dataFileName)
-    symbols = []
-    for symbol, data in MFData.items():
-        if scrapeTag in data['ScrapeTags']:
-            diffSecs = (nowTime - data['ScrapeTags'][scrapeTag]).total_seconds()
-            if diffSecs > totalSecs:
-                symbols.append(symbol)
-        else:
-            symbols.append(symbol)
-    symbols.sort()
-    return symbols
-
-def symbolsWithScrape(dataFileName, scrapeTag):
-    MFData = DS.getData(dataFileName)
-    symbols = []
-    for symbol, data in MFData.items():
-        if scrapeTag in data['ScrapeTags']:
-            if scrapeTag in data['ScrapeTags']:
-                symbols.append(symbol)
+    symbolsDone = set()
+    for symbol, data in MFData[dataName].items():
+        diffSecs = (nowTime - data['ScrapeTag']).total_seconds()
+        if diffSecs <= totalSecs:
+            symbolsDone.add(symbol)
+    symbols = list(MFData['Symbols'].difference(symbolsDone))
     symbols.sort()
     return symbols
 
@@ -459,7 +462,9 @@ def quoteTestMWSB4Proc(url):
 
 def getMFQuotesMWBS4(dataFileName):
     MFData = DS.getData(dataFileName)
-    scrapeTag = 'MW_Q'
+    dataName = 'MarketWatchQuotes'
+    if not 'Symbols' in MFData: MFData['Symbols'] = set()
+    if not dataName in MFData: MFData['MarketWatchQuotes'] = {}
 
     # scrape for alphabetic list pages
     letters = [chr(x) for x in range(65, 91)]
@@ -481,26 +486,29 @@ def getMFQuotesMWBS4(dataFileName):
     for result in results[1]:
         if type(result) == dict:
             for symbol, quoteData in result.items():
-                if not symbol in MFData:
-                    MFData[symbol] = {'ScrapeTags': {}}
-                    addCount = addCount + 1
-                    for attr, value in quoteData.items():
-                        MFData[symbol][attributeCheck(attr)] = []
-                        MFData[symbol][attributeCheck(attr)].append(value)
-                    MFData[symbol]['ScrapeTags'][scrapeTag] = datetime.now()
-
-    logging.info('New Mutual Fund quotes added: %s' % addCount)
-    logging.info('Total quotes in data        : %s' % len(MFData))
+                MFData['Symbols'].add(symbol)
+                MFData[dataName][symbol] = {}
+                for attr, value in quoteData.items():
+                    MFData[dataName][symbol][attributeCheck(attr)] = value
+                MFData[dataName][symbol]['ScrapeTag'] = datetime.now()
+    logging.info('Total symbols in data: %s' % len(MFData['Symbols']))
     DS.saveData(MFData, dataFileName)
 
 def getMFTypeMSBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
     MFData = DS.getData(dataFileName)
-    scrapeTag = 'MS_T'
+    dataName = 'MorningStarTypes'
+    if not 'Symbols' in MFData:
+        logging.info('No symbols found in data !')
+        return
+    if not 'MarketWatchQuotes' in MFData:
+        logging.info('Could not retrieve Exchange data !')
+        return
+    if not dataName in MFData: MFData[dataName] = {}
 
-    symbols = symbolsNeedScrape(dataFileName, scrapeTag, seconds=seconds, minutes=minutes, hours=hours, days=days)
+    symbols = symbolsNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days)
     symbolExchanges = []
     for symbol in symbols:
-        symbolExchanges.append([symbol, MFData[symbol]['Exchange'][0]])
+        symbolExchanges.append([symbol, MFData['MarketWatchQuotes'][symbol]['Exchange']])
 
     sTotal = len(symbolExchanges)
     for block in DS.makeMultiBlocks(symbolExchanges, 300):
@@ -510,13 +518,12 @@ def getMFTypeMSBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
         sIndex = 0
         for data in exchangeData[1]:
             symbol = block[sIndex][0]
-            MFData[symbol]['ScrapeTags'][scrapeTag] = datetime.now()
+            if not symbol in MFData[dataName]: MFData[dataName][symbol] = {}
+            MFData[dataName][symbol]['ScrapeTag'] = datetime.now()
+            attribute = attributeCheck('Type')
             if data != None:
                 data = data[:-1]
-                attribute = attributeCheck('Type')
-                if not attribute in MFData[symbol]:
-                    MFData[symbol][attribute] = []
-                MFData[symbol][attribute].append(data)
+            MFData[dataName][symbol]['Type'] = data
             sIndex += 1
         
         DS.saveData(MFData, dataFileName)
@@ -525,17 +532,27 @@ def getMFTypeMSBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
 
 def getMFQuoteDataMSSB4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
     MFData = DS.getData(dataFileName)
-    scrapeTag = 'MS_QD'
+    dataName = 'MorningStarQuoteData'
+    if not 'Symbols' in MFData:
+        logging.info('No symbols found in data !')
+        return
+    if not 'MarketWatchQuotes' in MFData:
+        logging.info('Could not retrieve Exchange data !')
+        return
+    if not 'MorningStarTypes' in MFData:
+        logging.info('Could not retrieve Type data !')
+        return
+    if not dataName in MFData: MFData[dataName] = {}
 
-    typeSymbols = symbolsWithScrape(dataFileName, 'MS_T')
-    todoSymbols = symbolsNeedScrape(dataFileName, scrapeTag, seconds=seconds, minutes=minutes, hours=hours, days=days)
-    symbols = list(set(typeSymbols).intersection(set(todoSymbols)))
+    typeSymbols = set()
+    for symbol, data in MFData['MorningStarTypes'].items():
+        if data['Type'] != None: typeSymbols.add(symbol)
+    todoSymbols = symbolsNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days)
+    symbols = list(typeSymbols.intersection(set(todoSymbols)))
     symbols.sort()
     qDataSymbols = []
     for symbol in symbols:
-        if not 'Type' in MFData[symbol] or len(MFData[symbol]['Type']) == 0:
-            continue
-        qDataSymbols.append([symbol, MFData[symbol]['Exchange'][0], MFData[symbol]['Type'][0]])
+        qDataSymbols.append([symbol, MFData['MarketWatchQuotes'][symbol]['Exchange'], MFData['MorningStarTypes'][symbol]['Type']])
 
     sTotal = len(qDataSymbols)
     for block in DS.makeMultiBlocks(qDataSymbols, 300):
@@ -545,12 +562,11 @@ def getMFQuoteDataMSSB4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
         sIndex = 0
         for data in quoteData[1]:
             symbol = block[sIndex][0]
-            MFData[symbol]['ScrapeTags'][scrapeTag] = datetime.now()
+            if not symbol in MFData[dataName]: MFData[dataName][symbol] = {}
+            MFData[dataName][symbol]['ScrapeTag'] = datetime.now()
             for attr, value in data.items():
                 attribute = attributeCheck(attr)
-                if not attribute in MFData[symbol]:
-                    MFData[symbol][attribute] = []
-                MFData[symbol][attribute].append(value)
+                MFData[dataName][symbol][attribute] = value
             sIndex += 1
         
         DS.saveData(MFData, dataFileName)
@@ -559,9 +575,13 @@ def getMFQuoteDataMSSB4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
 
 def getMFQuoteDataMWSB4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
     MFData = DS.getData(dataFileName)
-    scrapeTag = 'MW_QD'
+    dataName = 'MarketWatchQuoteData'
+    if not 'Symbols' in MFData:
+        logging.info('No symbols found in data !')
+        return
+    if not dataName in MFData: MFData[dataName] = {}
 
-    todoSymbols = symbolsNeedScrape(dataFileName, scrapeTag, seconds=seconds, minutes=minutes, hours=hours, days=days)
+    todoSymbols = symbolsNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days)
 
     sTotal = len(todoSymbols)
     for block in DS.makeMultiBlocks(todoSymbols, 100):
@@ -571,12 +591,11 @@ def getMFQuoteDataMWSB4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
         sIndex = 0
         for data in quoteData[1]:
             symbol = block[sIndex]
-            MFData[symbol]['ScrapeTags'][scrapeTag] = datetime.now()
+            if not symbol in MFData[dataName]: MFData[dataName][symbol] = {}
+            MFData[dataName][symbol]['ScrapeTag'] = datetime.now()
             for attr, value in data.items():
                 attribute = attributeCheck(attr)
-                if not attribute in MFData[symbol]:
-                    MFData[symbol][attribute] = []
-                MFData[symbol][attribute].append(value)
+                MFData[dataName][symbol][attribute] = value
             sIndex += 1
 
         DS.saveData(MFData, dataFileName)
@@ -585,9 +604,13 @@ def getMFQuoteDataMWSB4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
 
 def getMFQuoteDataYFSB4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
     MFData = DS.getData(dataFileName)
-    scrapeTag = 'YF_QD'
+    dataName = 'YahooFinanceQuoteData'
+    if not 'Symbols' in MFData:
+        logging.info('No symbols found in data !')
+        return
+    if not dataName in MFData: MFData[dataName] = {}
 
-    todoSymbols = symbolsNeedScrape(dataFileName, scrapeTag, seconds=seconds, minutes=minutes, hours=hours, days=days)
+    todoSymbols = symbolsNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days)
 
     sTotal = len(todoSymbols)
     for block in DS.makeMultiBlocks(todoSymbols, 100):
@@ -597,12 +620,11 @@ def getMFQuoteDataYFSB4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
         sIndex = 0
         for data in quoteData[1]:
             symbol = block[sIndex]
-            MFData[symbol]['ScrapeTags'][scrapeTag] = datetime.now()
+            if not symbol in MFData[dataName]: MFData[dataName][symbol] = {}
+            MFData[dataName][symbol]['ScrapeTag'] = datetime.now()
             for attr, value in data.items():
                 attribute = attributeCheck(attr)
-                if not attribute in MFData[symbol]:
-                    MFData[symbol][attribute] = []
-                MFData[symbol][attribute].append(value)
+                MFData[dataName][symbol][attribute] = value
             sIndex += 1
 
         DS.saveData(MFData, dataFileName)
@@ -644,39 +666,38 @@ if __name__ == "__main__":
     # start up
     dataFileName = 'MF_DATA'
     # DS.setupLogging('MarketWatchTest.log', new=False, timed=True)
-    DS.setupLogging('MFDataScrape.log', timed=True, new=False)
+    setupLogging('MFDataScrape.log', timed=True, new=False)
     logging.info('Start ...')
 
-    # # create MFData by retrieving mutul funds from MarketWatch
-    # # not much data, so probably not blocked
-    # # fast (40sec for 38043 symbols)
-    # getMFQuotesMWBS4(dataFileName)
+    # # # create MFData by retrieving mutul funds from MarketWatch
+    # # getMFQuotesMWBS4(dataFileName)
     # MFData = DS.getData(dataFileName)
     # DS.saveData(MFData, dataFileName+'_MW_Q')
 
+
     # # get investment type fom MorningStar links
-    # # fast (1h 23 min for 38043 symbols))
+    # # fast (1h 23 min for 38043 symbols) (29 min for 38040 symbols)
     # getMFTypeMSBS4(dataFileName, days=1)
     # MFData = DS.getData(dataFileName)
     # DS.saveData(MFData, dataFileName+'_MS_T')
 
     # # get quote data from MorningStar
-    # # fast (1h 28 min for 38043 symbols))
+    # # fast (1h 28 min for 38043 symbols) (34 min for 34560 symbols)
     # getMFQuoteDataMSSB4(dataFileName, days=1)
     # MFData = DS.getData(dataFileName)
     # DS.saveData(MFData, dataFileName+'_MS_QD')
 
-    # # get quote data from MarketWatch
-    # # slow because of blocking
-    # getMFQuoteDataMWSB4(dataFileName, days=1)
-    # MFData = DS.getData(dataFileName)
-    # DS.saveData(MFData, dataFileName+'_MW_QD')
+    # get quote data from MarketWatch
+    # slow because of blocking
+    getMFQuoteDataMWSB4(dataFileName, days=1)
+    MFData = DS.getData(dataFileName)
+    DS.saveData(MFData, dataFileName+'_MW_QD')
 
-    # # get quote data from YahooFinance
-    # # slow because of blocking
-    # getMFQuoteDataYFSB4(dataFileName, days=1)
-    # MFData = DS.getData(dataFileName)
-    # DS.saveData(MFData, dataFileName+'_YF_QD')
+    # get quote data from YahooFinance
+    # slow because of blocking
+    getMFQuoteDataYFSB4(dataFileName, days=1)
+    MFData = DS.getData(dataFileName)
+    DS.saveData(MFData, dataFileName+'_YF_QD')
 
 
     # urlTester('https://finance.yahoo.com/quote/%s', 'YahooFinanceTest', 404)

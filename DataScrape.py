@@ -4,7 +4,8 @@ from multiprocessing.dummy import Pool
 from multiprocessing import cpu_count
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+# from webdriver_manager.chrome import ChromeDriverManager
+import webdriver_manager
 from selenium.webdriver.common.by import By
 
 def setupLogging(filename, new=True, timed=False):
@@ -16,6 +17,18 @@ def setupLogging(filename, new=True, timed=False):
         formatStr = '%(asctime)s: %(message)s'
     logging.basicConfig(
         filename=filename, encoding='utf-8', level=logging.INFO, filemode=filemode,
+        format=formatStr, datefmt=datefmtStr
+        )
+
+def test():
+    filemode = 'a'
+    # if new: filemode = 'w'
+    formatStr = '%(message)s'
+    datefmtStr = '%m/%d/%Y %I:%M:%S %p'
+    # if timed:
+    formatStr = '%(asctime)s: %(message)s'
+    logging.basicConfig(
+        filename='a_test.log', encoding='utf-8', level=logging.INFO, filemode=filemode,
         format=formatStr, datefmt=datefmtStr
         )
 
@@ -208,14 +221,15 @@ def multiScrape(poolVariables, scrapeProc, retryStatusCode=None):
             logging.info('slept %s seconds' % sleepTime)
     return data
 
-# def startWebdrivers(driversCount):
-#     drivers = []
-#     for x in range(driversCount):
-#         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
-#         driver.implicitly_wait(25)
-#         driver.set_page_load_timeout(30)
-#         drivers.append(driver)
-#     return drivers
+def startWebdrivers(driversCount):
+    drivers = []
+    for x in range(driversCount):
+        driver = webdriver.Chrome(service=Service(webdriver_manager.chrome.ChromeDriverManager().install()))
+        # driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+        driver.implicitly_wait(25)
+        driver.set_page_load_timeout(30)
+        drivers.append(driver)
+    return drivers
 
 # def quitWebDrivers(webDrivers):
 #     for driver in webDrivers:
