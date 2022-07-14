@@ -2,6 +2,8 @@ import DataScrape as DS
 from bs4 import BeautifulSoup
 from datetime import datetime
 import time, logging, requests
+from multiprocessing.dummy import Pool
+import yfinance as yf
 
 # --- TOOLS ---
 
@@ -381,7 +383,11 @@ def mfQuoteDataMWSB4Proc(symbol):
     return [statusCode, data]
 
 def mfQuoteDataYFSB4Proc(symbol):
-    # logging.info('%s: scraping MarketWatch Data' % symbol)
+    excludeList = ['DIGI']
+    if symbol in excludeList:
+        logging.info('excluding symbol: %s' % symbol)
+        return [200, {}]
+    
     data = {}
     url = 'https://finance.yahoo.com/quote/%s' % symbol
     r = DS.getRequest(url)
@@ -457,6 +463,10 @@ def quoteTestMWSB4Proc(url):
     statusCode = r.status_code
 
     return [statusCode, [url, r.url]]
+
+def mfQuoteInfoYF(symbol):
+    ticker = yf.Ticker(symbol)
+    return ticker.info
 
 # --- MAIN SCRAPERS ---
 
@@ -613,7 +623,7 @@ def getMFQuoteDataYFSB4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
     todoSymbols = symbolsNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days)
 
     sTotal = len(todoSymbols)
-    for block in DS.makeMultiBlocks(todoSymbols, 100):
+    for block in DS.makeMultiBlocks(todoSymbols, 10):
         logging.info('symbols to scrape quote data with Yahoo Finance: %s' % sTotal)
         quoteData = DS.multiScrape(block, mfQuoteDataYFSB4Proc, retryStatusCode=404)
 
@@ -625,6 +635,50 @@ def getMFQuoteDataYFSB4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
             for attr, value in data.items():
                 attribute = attributeCheck(attr)
                 MFData[dataName][symbol][attribute] = value
+            sIndex += 1
+
+        DS.saveData(MFData, dataFileName)
+        
+        sTotal = sTotal - len(block)
+
+def getMFQuoteInfoYF(dataFileName, seconds=0, minutes=0, hours=0, days=0):
+    MFData = DS.getData(dataFileName)
+    dataName = 'YFinanceTickerInfo'
+    if not 'Symbols' in MFData:
+        logging.info('No symbols found in data !')
+        return
+    if not dataName in MFData: MFData[dataName] = {}
+
+    todoSymbols = symbolsNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days)
+
+    processes = 4
+    sleepStepTime = 30
+    multiPool = Pool(processes)
+    sTotal = len(todoSymbols)
+    for block in DS.makeMultiBlocks(todoSymbols, processes):
+        logging.info('symbols to get quote info with YFinance: %s' % sTotal)
+        results = []
+        retry = True
+        while retry:
+            results = multiPool.map(mfQuoteInfoYF, block)
+            retry = False
+
+            # test if locked
+            totalSleep = 0
+            while len(mfQuoteInfoYF('VITAX')) < 4:
+                retry = True
+                time.sleep(sleepStepTime)
+                totalSleep += sleepStepTime
+                logging.info('waiting for %s seconds to unblock' % totalSleep)
+            if retry:
+                logging.info('retry same symbols to scrape quote data with Yahoo Finance')
+
+        sIndex = 0
+        for data in results:
+            symbol = block[sIndex]
+            if not symbol in MFData[dataName]: MFData[dataName][symbol] = {}
+            MFData[dataName][symbol]['ScrapeTag'] = datetime.now()
+            MFData[dataName][symbol]['Info'] = data
             sIndex += 1
 
         DS.saveData(MFData, dataFileName)
@@ -687,17 +741,23 @@ if __name__ == "__main__":
     # MFData = DS.getData(dataFileName)
     # DS.saveData(MFData, dataFileName+'_MS_QD')
 
-    # get quote data from MarketWatch
-    # slow because of blocking
-    getMFQuoteDataMWSB4(dataFileName, days=1)
-    MFData = DS.getData(dataFileName)
-    DS.saveData(MFData, dataFileName+'_MW_QD')
+    # # get quote data from MarketWatch
+    # # slow because of blocking
+    # getMFQuoteDataMWSB4(dataFileName, days=1)
+    # MFData = DS.getData(dataFileName)
+    # DS.saveData(MFData, dataFileName+'_MW_QD')
 
-    # get quote data from YahooFinance
-    # slow because of blocking
-    getMFQuoteDataYFSB4(dataFileName, days=1)
+    # # get quote data from YahooFinance
+    # # slow because of blocking
+    # getMFQuoteDataYFSB4(dataFileName, days=1)
+    # MFData = DS.getData(dataFileName)
+    # DS.saveData(MFData, dataFileName+'_YF_QD')
+    
+    # get quote info from YahooFinance
+    # very slow because of blocking
+    getMFQuoteInfoYF(dataFileName, days=1)
     MFData = DS.getData(dataFileName)
-    DS.saveData(MFData, dataFileName+'_YF_QD')
+    DS.saveData(MFData, dataFileName+'_YF_QI')
 
 
     # urlTester('https://finance.yahoo.com/quote/%s', 'YahooFinanceTest', 404)

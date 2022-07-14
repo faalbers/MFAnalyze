@@ -160,12 +160,15 @@ def getStatusCodes(urls):
 
 def unblockSleep(poolVariable, scrapeProc, retryStatusCode):
     sleepTime = 0
-    timeIncrement = 5
+    sleepTimeMax = 600
+    timeIncrement = 15
     blocked = True
     while blocked:
         data = scrapeProc(poolVariable)
         if data[0] != retryStatusCode: break
         sleepTime += timeIncrement
+        if sleepTime >= sleepTimeMax:
+            return None
         time.sleep(timeIncrement)
     return sleepTime
 
@@ -192,7 +195,7 @@ def multiScrape(poolVariables, scrapeProc, retryStatusCode=None):
         for result in results:
             rStatusCodes.append(result[0])
             rData.append(result[1])
-        
+
         # go through status codes and find retry codes
         # retrieve the retry poolVariable indices 
         pVarIndex = 0
@@ -216,9 +219,16 @@ def multiScrape(poolVariables, scrapeProc, retryStatusCode=None):
             pVarIndices = pVarBlockedIndices
 
             # keep retrying first blocked one till status code isn't blocked
-            logging.info('retrying %s blocked attempts' % len(pVarBlockedIndices))
-            sleepTime = unblockSleep(pVarsRetry[0], scrapeProc, retryStatusCode)
-            logging.info('slept %s seconds' % sleepTime)
+            logging.info('%s blocked attempts' % len(pVarBlockedIndices))
+            logging.info('retrying poolVariable: %s' % pVarsRetry[pVarIndices[0]])
+            sleepTime = unblockSleep(pVarsRetry[pVarIndices[0]], scrapeProc, retryStatusCode)
+            if sleepTime == None:
+                logging.info('tried too long, skipping symbol: %s' % pVarsRetry[pVarIndices[0]])
+                data[0][pVarIndices[0]] = 200
+                data[1][pVarIndices[0]] = {}
+                pVarIndices.remove(pVarIndices[0])
+            else:
+                logging.info('tried for %s seconds' % sleepTime)
     return data
 
 def startWebdrivers(driversCount):

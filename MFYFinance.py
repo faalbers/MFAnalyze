@@ -3,6 +3,7 @@ import yfinance as yf
 from multiprocessing.dummy import Pool
 from multiprocessing import cpu_count
 import logging, time, os
+from datetime import datetime
 
 def timingProc(sleepTime):
     time.sleep(sleepTime)
@@ -181,7 +182,7 @@ def getYFData():
 
 # main program
 if __name__ == "__main__":
-    # dataFileName = 'MF_DATA'
+    dataFileName = 'MF_DATA'
     yfFileName = 'YF_DATA'
     
     DS.setupLogging('MFYFinance.log', timed=True, new=False)
@@ -192,12 +193,13 @@ if __name__ == "__main__":
     # testMultiTiming(10)
     # final()
 
+    MFData = DS.getData(dataFileName)
     YFData = DS.getData(yfFileName)
-
-    emptyCount = 0
+    dataName = 'YFinanceTickerInfo'
+    if not dataName in MFData: MFData[dataName] = {}
     for symbol, data in YFData.items():
-        if len(data) < 4:
-            emptyCount += 1
-
-    print(len(YFData))
-    print(emptyCount)
+        if not symbol in MFData[dataName]: MFData[dataName][symbol] = {}
+        MFData[dataName][symbol]['ScrapeTag'] = datetime.now()
+        MFData[dataName][symbol]['Info'] = data
+    
+    DS.saveData(MFData, dataFileName)
