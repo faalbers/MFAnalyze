@@ -1,23 +1,38 @@
 import DataScrape as DS
 from bs4 import BeautifulSoup
 from datetime import datetime
-import time, logging, requests
+import logging, time
 from multiprocessing.dummy import Pool
 import yfinance as yf
 
 # --- TOOLS ---
 
-def setupLogging(filename, new=True, timed=False):
-    filemode = 'a'
-    if new: filemode = 'w'
-    formatStr = '%(message)s'
-    datefmtStr = '%m/%d/%Y %I:%M:%S %p'
-    if timed:
-        formatStr = '%(asctime)s: %(message)s'
-    logging.basicConfig(
-        filename=filename, encoding='utf-8', level=logging.INFO, filemode=filemode,
-        format=formatStr, datefmt=datefmtStr
-        )
+def attributeCheck(attribute):
+    # checks = {'NetExpenseRatio': 'ExpenseRatio',
+    # 'TotalExpenseRatio': 'ExpenseRatio'}
+    checks = {}
+
+    if attribute in checks: return checks[attribute]
+    return attribute
+
+def symbolsNeedScrape(MFData, dataName, seconds=0, minutes=0, hours=0, days=0):
+    if not 'Symbols' in MFData: return []
+    symbols = list(MFData['Symbols'])
+    symbols.sort()
+    if not dataName in MFData: return symbols
+    minuteSecs = 60
+    hourSecs = minuteSecs * 60
+    daySecs = hourSecs * 24
+    totalSecs = days * daySecs + hours * hourSecs + minutes * minuteSecs + seconds
+    nowTime = datetime.now()
+    symbolsDone = set()
+    for symbol, data in MFData[dataName].items():
+        diffSecs = (nowTime - data['ScrapeTag']).total_seconds()
+        if diffSecs <= totalSecs:
+            symbolsDone.add(symbol)
+    symbols = list(MFData['Symbols'].difference(symbolsDone))
+    symbols.sort()
+    return symbols
 
 def cleanUpAttributes(attributes, capitalize=True):
     data = {}
@@ -106,7 +121,7 @@ def getMWtbodyData(tbodies):
     
     if len(holdings) > 0:
         data['Holdings'] = cleanUpAttributes(holdings, capitalize=False)
-
+    
     return data
 
 def getMWulData(uls):
@@ -123,14 +138,6 @@ def getMWulData(uls):
 
     return data
 
-def attributeCheck(attribute):
-    # checks = {'NetExpenseRatio': 'ExpenseRatio',
-    # 'TotalExpenseRatio': 'ExpenseRatio'}
-    checks = {}
-
-    if attribute in checks: return checks[attribute]
-    return attribute
-
 # def getScrapeTime(dataFileName, scrapeTag):
 #     MFData = DS.getData(dataFileName)
 
@@ -145,25 +152,6 @@ def attributeCheck(attribute):
 
 # def getScrapeTimeSince(dataFileName, scrapeTag):
 #     return (datetime.now() - getScrapeTime(dataFileName, scrapeTag))
-
-def symbolsNeedScrape(MFData, dataName, seconds=0, minutes=0, hours=0, days=0):
-    if not 'Symbols' in MFData: return []
-    symbols = list(MFData['Symbols'])
-    symbols.sort()
-    if not dataName in MFData: return symbols
-    minuteSecs = 60
-    hourSecs = minuteSecs * 60
-    daySecs = hourSecs * 24
-    totalSecs = days * daySecs + hours * hourSecs + minutes * minuteSecs + seconds
-    nowTime = datetime.now()
-    symbolsDone = set()
-    for symbol, data in MFData[dataName].items():
-        diffSecs = (nowTime - data['ScrapeTag']).total_seconds()
-        if diffSecs <= totalSecs:
-            symbolsDone.add(symbol)
-    symbols = list(MFData['Symbols'].difference(symbolsDone))
-    symbols.sort()
-    return symbols
 
 # --- MULTI PROCS ---
 
@@ -233,7 +221,6 @@ def mfQuoteDataMSSB4Proc(symbolVar):
     symbol = symbolVar[0]
     exchange = symbolVar[1]
     type = symbolVar[2]
-    # logging.info('%s: scraping MorningStar Data using exchange: %s and type:' % (exchange, type))
 
     # XNYS: https://www.morningstar.com/cefs/xnys/PAXS/quote
     # XNYS: https://www.morningstar.com/stocks/xnys/MVO/quote
@@ -335,10 +322,10 @@ def mfQuoteDataMWSB4Proc(symbol):
 
     # check url redirection for useful data or no data at all
     urlRedirect = r.url
-    data['Types'] = set()
+    data['Type'] = None
     data['CountryCode'] = None
     data['ISO'] = None
-    data['SymbolNames'] = set()
+    data['SymbolName'] = None
     if urlRedirect != url:
         tail = urlRedirect.replace('https://www.marketwatch.com/','')
         if tail.startswith('search'):
@@ -346,9 +333,9 @@ def mfQuoteDataMWSB4Proc(symbol):
             return [statusCode, {}]
         # attributes = {}
         subdata = tail.split('/')
-        data['Types'].add(subdata[1])
+        data['Types'] = subdata[1]
         subdata = subdata[2].split('?')
-        data['SymbolNames'].add(subdata[0].upper())
+        data['SymbolName'] = subdata[0].upper()
         if len(subdata) != 1:
             subdata = subdata[1].split('&')
             for item in subdata:
@@ -358,8 +345,8 @@ def mfQuoteDataMWSB4Proc(symbol):
                 elif itemSplit[0] == 'iso':
                     data['ISO'] = itemSplit[1]
     else:
-        data['Types'].add('fund')
-        data['SymbolNames'].add(symbol)
+        data['Type'] = 'fund'
+        data['SymbolName'] = symbol
     
     soup = BeautifulSoup(r.text, 'html.parser')
     
@@ -425,44 +412,38 @@ def mfQuoteDataYFSB4Proc(symbol):
     
     return [statusCode, data]
 
-def mfQuoteDataGFSB4Proc(symbolVar):
-    # https://www.google.com/finance/quote/SOGU:NASDAQ
-    data = {}
-    symbol = symbolVar[0]
-    exchange = symbolVar[1]
-    # XNYS: https://www.morningstar.com/cefs/xnys/PAXS/quote
-    # XNYS: https://www.morningstar.com/stocks/xnys/MVO/quote
-    # XASE: https://www.morningstar.com/cefs/xase/AEF/quote
-    # ARCX: https://www.morningstar.com/etfs/arcx/SPSM/quote
-    # BATS: https://www.morningstar.com/etfs/bats/STOTS/quote
-    # XNAS: https://www.morningstar.com/funds/xnas/VITAX/quote
-    # XNAS: https://www.morningstar.com/etfs/xnas/SOGU/quote
-    # XNAS: https://www.morningstar.com/stocks/xnas/HRZN/quote
-    # XETR: None LMWE
-    # OOTC: https://www.morningstar.com/stocks/pinx/AWRRF/quote
-    # OOTC: None ISMXF
+# def mfQuoteDataGFSB4Proc(symbolVar):
+#     # https://www.google.com/finance/quote/SOGU:NASDAQ
+#     data = {}
+#     symbol = symbolVar[0]
+#     exchange = symbolVar[1]
+#     # XNYS: https://www.morningstar.com/cefs/xnys/PAXS/quote
+#     # XNYS: https://www.morningstar.com/stocks/xnys/MVO/quote
+#     # XASE: https://www.morningstar.com/cefs/xase/AEF/quote
+#     # ARCX: https://www.morningstar.com/etfs/arcx/SPSM/quote
+#     # BATS: https://www.morningstar.com/etfs/bats/STOTS/quote
+#     # XNAS: https://www.morningstar.com/funds/xnas/VITAX/quote
+#     # XNAS: https://www.morningstar.com/etfs/xnas/SOGU/quote
+#     # XNAS: https://www.morningstar.com/stocks/xnas/HRZN/quote
+#     # XETR: None LMWE
+#     # OOTC: https://www.morningstar.com/stocks/pinx/AWRRF/quote
+#     # OOTC: None ISMXF
 
-    if exchange == 'XNYS': exchange = 'NYSE'
-    elif exchange == 'XASE': exchange = 'NYSEAMERICAN'
-    elif exchange == 'ARCX': exchange = 'NYSEARCA'
-    elif exchange == 'XNAS': exchange = 'MUTF'
-    elif exchange == 'OOTC': exchange = 'OTCMKTS'
-    else:
-        logging.info()
+#     if exchange == 'XNYS': exchange = 'NYSE'
+#     elif exchange == 'XASE': exchange = 'NYSEAMERICAN'
+#     elif exchange == 'ARCX': exchange = 'NYSEARCA'
+#     elif exchange == 'XNAS': exchange = 'MUTF'
+#     elif exchange == 'OOTC': exchange = 'OTCMKTS'
+#     else:
+#         logging.info()
 
-    url = 'https://www.google.com/finance/quote/' % (type+'S', exchange, symbol)
+#     url = 'https://www.google.com/finance/quote/' % (type+'S', exchange, symbol)
     
-    r = DS.getRequest(url)
-    statusCode = r.status_code
+#     r = DS.getRequest(url)
+#     statusCode = r.status_code
 
-    if statusCode != 200:
-        return [statusCode, data]
-
-def quoteTestMWSB4Proc(url):
-    r = DS.getRequest(url)
-    statusCode = r.status_code
-
-    return [statusCode, [url, r.url]]
+#     if statusCode != 200:
+#         return [statusCode, data]
 
 def mfQuoteInfoYF(symbol):
     ticker = yf.Ticker(symbol)
@@ -522,7 +503,7 @@ def getMFTypeMSBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
 
     sTotal = len(symbolExchanges)
     for block in DS.makeMultiBlocks(symbolExchanges, 300):
-        logging.info('exchanges to check with MorningStar: %s' % sTotal)
+        logging.info('symbols to scrape types with MorningStar: %s' % sTotal)
         exchangeData = DS.multiScrape(block, mfTypeMSBS4Proc)
 
         sIndex = 0
@@ -685,270 +666,45 @@ def getMFQuoteInfoYF(dataFileName, seconds=0, minutes=0, hours=0, days=0):
         
         sTotal = sTotal - len(block)
 
-def urlTester(urlTest, resultFileName, retryStatusCode=None):
-    MFData = DS.getData('MF_DATA')
-
-    symbols = list(MFData.keys())
-    symbols.sort()
-
-    result = DS.getData(resultFileName)
-    todoSymbols = list(set(symbols).difference(set(result.keys())))
-    todoSymbols.sort()
-    todoSymbols = todoSymbols
-    sTotal = len(todoSymbols)
-    for block in DS.makeMultiBlocks(todoSymbols, 300):
-        logging.info('symbols test: %s' % sTotal)
-        urls = []
-        for symbol in block:
-            url = urlTest % symbol
-            urls.append(url)
-        quoteTests = DS.multiScrape(urls, quoteTestMWSB4Proc, retryStatusCode)
-
-        sIndex = 0
-        for symbol in block:
-            result[symbol] = [quoteTests[0][sIndex], quoteTests[1][sIndex]]
-            sIndex += 1
-        
-        DS.saveData(result, resultFileName)
-
-        sTotal -= len(block)
-
-
-
-# main program
 if __name__ == "__main__":
-    # start up
-    dataFileName = 'MF_DATA'
-    # DS.setupLogging('MarketWatchTest.log', new=False, timed=True)
-    setupLogging('MFDataScrape.log', timed=True, new=False)
+    scrapedFileName = 'MF_DATA_SCRAPED'
+    DS.setupLogging('MFDataScrape.log', timed=True, new=False)
     logging.info('Start ...')
 
-    # # # create MFData by retrieving mutul funds from MarketWatch
-    # # getMFQuotesMWBS4(dataFileName)
-    # MFData = DS.getData(dataFileName)
-    # DS.saveData(MFData, dataFileName+'_MW_Q')
-
+    # # create MFData by retrieving mutul funds from MarketWatch
+    # getMFQuotesMWBS4(scrapedFileName)
 
     # # get investment type fom MorningStar links
     # # fast (1h 23 min for 38043 symbols) (29 min for 38040 symbols)
-    # getMFTypeMSBS4(dataFileName, days=1)
-    # MFData = DS.getData(dataFileName)
-    # DS.saveData(MFData, dataFileName+'_MS_T')
+    # getMFTypeMSBS4(scrapedFileName, days=1)
 
     # # get quote data from MorningStar
     # # fast (1h 28 min for 38043 symbols) (34 min for 34560 symbols)
-    # getMFQuoteDataMSSB4(dataFileName, days=1)
-    # MFData = DS.getData(dataFileName)
-    # DS.saveData(MFData, dataFileName+'_MS_QD')
+    # getMFQuoteDataMSSB4(scrapedFileName, days=1)
 
     # # get quote data from MarketWatch
     # # slow because of blocking
-    # getMFQuoteDataMWSB4(dataFileName, days=1)
-    # MFData = DS.getData(dataFileName)
-    # DS.saveData(MFData, dataFileName+'_MW_QD')
+    # getMFQuoteDataMWSB4(scrapedFileName, days=1)
 
     # # get quote data from YahooFinance
     # # slow because of blocking
-    # getMFQuoteDataYFSB4(dataFileName, days=1)
-    # MFData = DS.getData(dataFileName)
-    # DS.saveData(MFData, dataFileName+'_YF_QD')
-    
-    # get quote info from YahooFinance
-    # very slow because of blocking
-    getMFQuoteInfoYF(dataFileName, days=1)
+    # getMFQuoteDataYFSB4(scrapedFileName, days=1)
+
+    # # get quote info from YahooFinance
+    # # very slow because of blocking
+    # getMFQuoteInfoYF(scrapedFileName, days=1)
+
+    # creating data file
+    dataFileName = 'MF_DATA'
     MFData = DS.getData(dataFileName)
-    DS.saveData(MFData, dataFileName+'_YF_QI')
+    MFSData = DS.getData(scrapedFileName)
 
+    for symbol, data in MFSData['MarketWatchQuotes'].items():
+        MFData[symbol] = {}
+        if data['Sector'] != '':
+            MFData[symbol]['Sector'] = data['Sector']
+        if data['Exchange'] != '':
+            MFData[symbol]['Exchange'] = data['Exchange']
+        MFData[symbol]['Name'] = data['Name']
 
-    # urlTester('https://finance.yahoo.com/quote/%s', 'YahooFinanceTest', 404)
-    # urlTester('https://stockcharts.com/freecharts/symbolsummary.html?sym=%s', 'StockChartsTest')
-    # urlTester('https://www.google.com/finance/quote/%s:MUTF', 'GooleFinanceTest')
-    # urlTester('https://www.marketwatch.com/investing/fund/%s', 'MarketWatchTest')
-    # urlTester('https://www.morningstar.com/funds/xnas/%s/quote', 'MorningStarXnas')
-    # urlTester('https://www.morningstar.com/funds/xnys/%s/quote', 'MorningStarXnys')
-    # results = DS.getData('YahooFinanceTest')
-    # statusCodes = set()
-    # status200 = 0
-    # status302 = 0
-    # status403 = 0
-    # status404 = 0
-    # status500 = 0
-    # status502 = 0
-    # for symbol, data in results.items():
-    #     statusCode = data[0]
-    #     statusCodes.add(statusCode)
-    #     if statusCode == 200: status200 += 1
-    #     elif statusCode == 302: status302 += 1
-    #     elif statusCode == 403: status403 += 1
-    #     elif statusCode == 404: status404 += 1
-    #     elif statusCode == 500: status500 += 1
-    #     elif statusCode == 502: status502 += 1
-    # print((statusCodes))
-    # print('200 (OK)           = %s' % status200)
-    # print('302 (redirect)     = %s' % status302)
-    # print('403 (blocked)      = %s' % status403)
-    # print('404 (not found)    = %s' % status404)
-    # print('500 (server error) = %s' % status500)
-    # print('502 (bad gateway)  = %s' % status502)
-
-    # notFound = 0
-    # test = 0
-    # for symbol, data in results.items():
-    #     test += 1
-    #     if data[1][1] != data[1][0]:
-    #         checkurl = data[1][1].replace('https://finance.yahoo.com/', '')
-    #         if checkurl.split('?')[0] == 'lookup':
-    #             notFound += 1
-    #             continue
-    #     # print('%s: %s' % (symbol, data))
-
-    # print('symbols not found: %s' % notFound)
-    # print(results)
-
-    # MFData = DS.getData('MF_DATA')
-
-    # otherXchanges = set()
-    # for symbol, data in results.items():
-    #     if data[0] == 404:
-    #         otherXchanges.add(MFData[symbol]['Exchange'])
-    #     # if data[0] == 200:
-    #     #     if symbol in MFData:
-    #     #         if MFData[symbol]['Exchange'] != 'XNAS':
-    #     #             print('%s: %s' % (symbol, MFData[symbol]['Exchange']))
-    # print(otherXchanges)
-
-    # types = set()
-    # countryCodes = set()
-    # isos = set()
-    # differentSymbols = 0
-    # notFound = 0
-    # for symbol, data in newData.items():
-    #     if data == {}:
-    #         notFound += 1
-    #         continue
-    #     types.add(data['Type'])
-    #     if 'countryCode' in data:
-    #         countryCodes.add(data['countryCode'])
-    #     if 'iso' in data:
-    #         isos.add(data['iso'])
-    #     if data['NewSymbol'] != symbol:
-    #         differentSymbols += 1
-        
-
-    # print('Not Found  : %s' % notFound)
-    # print('Diff Symbol: %s' % differentSymbols)
-    # print('Types      : %s' % types)
-    # print(countryCodes)
-    # print(isos)
-
-    # for symbol, statusCode in results.items():
-    #     print('%s: %s' % (symbol, statusCode))
-
-    # headers =  {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36'}
-    # # url = 'https://www.marketwatch.com/investing/fund/ESOY'
-    # # url = 'https://www.marketwatch.com/investing/fund/ESMCX'
-
-    # # r = requests.get(url, headers=headers, allow_redirects=False)
-    # r = requests.head(url, headers=headers, allow_redirects=True)
-    # print(r.status_code)
-    # print(r.url)
-
-
-
-    # https://finance.yahoo.com/quote/VITAX
-    # https://www.morningstar.com/funds/xnas/vitax/quote
-    # https://www.google.com/finance/quote/VITAX:MUTF
-    # https://www.marketwatch.com/investing/fund/vitax
-    # https://stockcharts.com/freecharts/symbolsummary.html?sym=vitax
-
-
-    # MFData = DS.getData('MF_DATA')
-    # print(MFData['EL4B'])
-
-
-    # for symbol, data in MFData.items():
-    #     if 'CreditQuality'in data:
-    #         print('CreditQuality: %s' % data['CreditQuality'])
-    #     if 'InterestRateSensitivity'in data:
-    #         print('InterestRateSensitivity: %s' % data['InterestRateSensitivity'])
-
-    # # get MorningStar quote data
-    # symbols = []
-    # for symbol, data in MFData.items():
-    #     if 'MSScraped' in data and data['MSScraped']: continue
-    #     if 'Type' in data and data['Type'] != None:
-    #         if data['Type'] == 'ETF':
-    #             symbols.append([symbol, data['Exchange'], data['Type']])
-
-
-    # # get additional quotes data from MarketWatch
-    # symbols = []
-    # for symbol, data in MFData.items():
-    #     if 'MWScraped' in data and data['MWScraped']: continue
-    #     symbols.append(symbol)
-    # symbols.sort()
-
-
-    # # some tests
-    # quotes = ['VITAX']
-    # USA searches
-    # XNYS: https://www.morningstar.com/cefs/xnys/PAXS/quote
-    # XASE: https://www.morningstar.com/cefs/xase/AEF/quote
-    # ARCX: https://www.morningstar.com/etfs/arcx/SPSM/quote
-    # BATS: https://www.morningstar.com/etfs/bats/STOTS/quote
-    # XNAS: https://www.morningstar.com/funds/xnas/VITAX/quote
-    # XETR: None LMWE
-    # OOTC: None ISMXF
-    
-    # symbols = []
-    # for symbol, data in MFData.items():
-    #     if data['Exchange'] == 'BATS':
-    #         symbols.append(symbol)
-    # print(symbols)
-
-    # symbols = ['VITAX', 'PAXS', 'AEF', 'SPSM', 'IBML', 'LMWE', 'ISMXF']
-    # for symbol in symbols[0:1]:
-    #     print(symbol)
-    #     data = mfQuoteDataMSSB4Proc(symbol, MFData[symbol]['Exchange'])
-    #     print(data)
-    
-    # for symbol in symbols:
-    #     print(symbol)
-    #     print(MFData[symbol]['Sector'])
-
-    # sectors = set()
-    # types = ['Exchange-Traded Funds', 'Closed-End Funds']
-    # for symbol, data in MFData.items():
-    #     if data['Exchange'] == 'XNAS':
-    #         if data['Sector'] == 'Closed-End Funds':
-    #             print(symbol)
-    #         sectors.add(data['Sector'])
-    # print(sectors)
-
-    # # get quotes data from MorningStar
-    # symbols = []
-    # for symbol, data in MFData.items():
-    #     if 'MSScraped' in data and data['MSScraped']: continue
-    #     symbols.append(symbol)
-    # symbols.sort()
- 
-    # sTotal = len(symbols)
-    # for symbolsBlock in DS.makeMultiBlocks(symbols, 300):
-    #     logging.info('symbols to scrape by MorningStar: %s' % sTotal)
-
-
-    #     # quoteData = DS.multiScrape(symbolsBlock, quoteDataMarketWatchProc)
-
-    #     # for message in quoteData[2]:
-    #     #     logging.info(message)
-
-    #     # sIndex = 0
-    #     # for data in quoteData[1]:
-    #     #     for attr, value in data.items():
-    #     #         MFData[symbolsBlock[sIndex]][attributeCheck(attr)] = value
-    #     #     sIndex += 1
-
-    #     # DS.saveData(MFData, MFDataFileName)
-        
-    #     sTotal = sTotal - len(symbolsBlock)
-    #     break
+    DS.saveData(MFData, dataFileName)

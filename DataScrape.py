@@ -4,7 +4,6 @@ from multiprocessing.dummy import Pool
 from multiprocessing import cpu_count
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-# from webdriver_manager.chrome import ChromeDriverManager
 import webdriver_manager
 from selenium.webdriver.common.by import By
 
