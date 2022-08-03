@@ -4,7 +4,8 @@ from multiprocessing.dummy import Pool
 from multiprocessing import cpu_count
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-import webdriver_manager
+# import webdriver_manager
+# from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 
 def setupLogging(filename, new=True, timed=False):
@@ -57,6 +58,10 @@ def getData(fileName):
     return data
 
 def saveData(data, fileName):
+    with open('SaveData.log', 'r') as f:
+        if len(f.read()) > 0:
+            logging.info('%s: Stop saving data and exit program' % fileName)
+            exit(0)
     dataFile = '%s.pickle' % fileName
     with open(dataFile, 'wb') as f:
         pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -219,10 +224,13 @@ def multiScrape(poolVariables, scrapeProc, retryStatusCode=None):
 
             # keep retrying first blocked one till status code isn't blocked
             logging.info('%s blocked attempts' % len(pVarBlockedIndices))
-            logging.info('retrying poolVariable: %s' % pVarsRetry[pVarIndices[0]])
-            sleepTime = unblockSleep(pVarsRetry[pVarIndices[0]], scrapeProc, retryStatusCode)
+            # logging.info('retrying poolVariable: %s' % pVarsRetry[pVarIndices[0]])
+            logging.info('retrying poolVariable: %s' % poolVariables[pVarIndices[0]])
+            # sleepTime = unblockSleep(pVarsRetry[pVarIndices[0]], scrapeProc, retryStatusCode)
+            sleepTime = unblockSleep(poolVariables[pVarIndices[0]], scrapeProc, retryStatusCode)
             if sleepTime == None:
-                logging.info('tried too long, skipping symbol: %s' % pVarsRetry[pVarIndices[0]])
+                # logging.info('tried too long, skipping symbol: %s' % pVarsRetry[pVarIndices[0]])
+                logging.info('tried too long, skipping symbol: %s' % poolVariables[pVarIndices[0]])
                 data[0][pVarIndices[0]] = 200
                 data[1][pVarIndices[0]] = {}
                 pVarIndices.remove(pVarIndices[0])
@@ -230,15 +238,15 @@ def multiScrape(poolVariables, scrapeProc, retryStatusCode=None):
                 logging.info('tried for %s seconds' % sleepTime)
     return data
 
-def startWebdrivers(driversCount):
-    drivers = []
-    for x in range(driversCount):
-        driver = webdriver.Chrome(service=Service(webdriver_manager.chrome.ChromeDriverManager().install()))
-        # driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
-        driver.implicitly_wait(25)
-        driver.set_page_load_timeout(30)
-        drivers.append(driver)
-    return drivers
+# def startWebdrivers(driversCount):
+#     drivers = []
+#     for x in range(driversCount):
+#         # driver = webdriver.Chrome(service=Service(webdriver_manager.chrome.ChromeDriverManager().install()))
+#         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+#         driver.implicitly_wait(25)
+#         driver.set_page_load_timeout(30)
+#         drivers.append(driver)
+#     return drivers
 
 # def quitWebDrivers(webDrivers):
 #     for driver in webDrivers:
