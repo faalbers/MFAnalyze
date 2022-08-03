@@ -999,7 +999,7 @@ def getMFQuoteInfoYF(dataFileName, seconds=0, minutes=0, hours=0, days=0):
 
     todoQuotes = quotesNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days)
 
-    processes = 4
+    processes = 6
     sleepStepTime = 30
     multiPool = Pool(processes)
     sTotal = len(todoQuotes)
