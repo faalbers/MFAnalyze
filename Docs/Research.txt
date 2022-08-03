@@ -212,6 +212,58 @@ data to find:
             - lower quality , economic sensitive
             - get hit harder when economy goes down
 
+Risk:
+    - Low Risk:
+        - Debt Funds
+    - Moderate Risk:
+        - Hybrid Funds
+    - High Risk:
+        - Equity Funds
+    - Measures:
+        - Beta:
+            Calculates relative volatility of a stock/mutual fund as against the benchmark.
+            Default Beta = 1.0
+            1.0 = Fund moves in line with the benchmark
+            Lower value is lower relative risk. But it's relative, not an actual risk factor.
+            Good for diversification analysis.
+            Based on historical data, so it's not a guaranty of future results
+
+        - Alpha:
+            Gauges the performance of an investment against a market index or bench mark in percentage.
+            Alpha = 0% = performed exactly the same as bench mark
+            Used in conjunction with Beta
+            Based on historical data, so it's not a guaranty of future results
+
+        - R-Squared:
+            Measures a fund's correlation to it's benchmark performance.
+            R2 = 100 = fund perfectly correlated with performance of benchmark
+            Index Funds have a range of 98 - 100
+            R2 < 80 = fund does not perform like typical index
+            if R2 = 90-100 , maybe change to Index fund that have lower Expense Ratio
+            Value fund categort have usually R2 < 90
+
+        - Standard Deviation:
+            Represents the volatility or riskiness of the fund.
+            Lets say of the average return = 10% but it fluctuated between +20% and -15%,
+            the fluctuation is what Standard Deviation captures.
+            If Average Return = 10% and Standard Deviation = 3%,
+            68% of the time it can be 10% - 3% or 10% + 4%
+            The higher the deviation , the higher the volatility is.
+            Sectoral Thematic and Small Cap Funds have higher Deviation = higher Volatility
+            Hybrid Funds have smaller Deviation
+
+        - Sharpe Ratio:
+            Measures the performance of an investment compared to risk-free asset, after
+            adjusting for its risk.
+            (RP-RF)/SD
+            RP = return on portfolio
+            RF = Risk free rate of return
+            SD = Standard Deviation
+            The higher , the better risk adjusted return. It has better potential in earning
+            more return per unit of risk.
+
+        - Sortino Ratio
+
 Fund structure and management:
     - Fund Company that creates and manages it
     - Broker custodian through where you own the Fund
@@ -242,4 +294,11 @@ https://www.investor.gov/introduction-investing/investing-basics/investment-prod
 https://www.nerdwallet.com/article/investing/types-of-mutual-funds
 https://www.investopedia.com/terms/m/mutualfund.asp
 https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/characteristics-mutual-funds-exchange-traded-funds
+https://youtu.be/ROAGmAgoMAE
+https://youtu.be/eU45evtcc90
+https://youtu.be/WxoNEtQSxd4
+https://www.advisorkhoj.com/mutual-funds-research/mutual-fund-portfolio-overlap
+https://www.thefundoo.com/Tools/PortfolioOverlap
+https://freefincal.com/mutual-fund-portfolio-overlap-tool/
+https://youtu.be/-enjklxKEio
 
