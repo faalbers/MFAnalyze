@@ -1,4 +1,5 @@
 import DataScrape as DS
+import ETradeAPI as ET
 from bs4 import BeautifulSoup
 from datetime import datetime
 import logging, time
@@ -1086,6 +1087,41 @@ def getMFQuoteInfoYF(dataFileName, seconds=0, minutes=0, hours=0, days=0):
 
 #     DS.quitWebDrivers(drivers)
 
+def getMFQuoteDataETAPI(dataFileName, seconds=0, minutes=0, hours=0, days=0):
+    MFData = DS.getData(dataFileName)
+    dataName = 'ETradeQuoteData'
+    if not 'Quotes' in MFData:
+        logging.info('No quotes found in data !')
+        return
+    if not dataName in MFData: MFData[dataName] = {}
+
+    todoQuotes = quotesNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days)
+
+    if len(todoQuotes) == 0: return
+    session = ET.getSession()
+
+    sTotal = len(todoQuotes)
+    for block in DS.makeMultiBlocks(todoQuotes, 10):
+        symbols = [quote.split(':')[0] for quote in block]
+        logging.info('quotes to scrape data with with ETrade API: %s' % sTotal)
+        quoteData = ET.multiQuotes(symbols, session, detailFlag='MF_DETAIL')
+
+        sIndex = 0
+        for data in quoteData:
+            quote = block[sIndex]
+            if not quote in MFData[dataName]: MFData[dataName][quote] = {}
+            MFData[dataName][quote]['ScrapeTag'] = datetime.now()
+            for attr, value in data.items():
+                attribute = attributeCheck(attr)
+                MFData[dataName][quote][attribute] = value
+            sIndex += 1
+        
+        DS.saveData(MFData, dataFileName)
+        
+        sTotal = sTotal - len(block)
+    
+    ET.endSession(session)
+
 if __name__ == "__main__":
     scrapedFileName = 'MF_DATA_SCRAPED'
     historyUpdateDays = 10
@@ -1129,3 +1165,6 @@ if __name__ == "__main__":
     # # get holdings data from MorningStar, needs Selenium drivers
     # getMFHoldingsDataMSSEL(scrapedFileName, days=historyUpdateDays)
 
+    # # get holdings data from YahooFinance
+    # # slow because of blocking
+    # getMFQuoteDataETAPI(scrapedFileName, days=historyUpdateDays)
