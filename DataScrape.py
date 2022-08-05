@@ -60,11 +60,11 @@ def getData(fileName):
 def saveData(data, fileName):
     with open('SaveData.log', 'r') as f:
         if len(f.read()) > 0:
-            logging.info('%s: Stop saving data and exit program' % fileName)
-            exit(0)
+            return False
     dataFile = '%s.pickle' % fileName
     with open(dataFile, 'wb') as f:
         pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+    return True
 
 # chop data list into block lists
 def makeMultiBlocks(data, blockSize):

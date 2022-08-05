@@ -749,7 +749,9 @@ def getMFCountryISOBS4(dataFileName):
     MFData['CountryCodes']['South Korea'] = 'KR'
     MFData['CountryCodes']['Vietnam'] = 'VN'
 
-    DS.saveData(MFData, dataFileName)
+    if not DS.saveData(MFData, dataFileName):
+        logging.info('%s: Stop saving data and exit program' % dataFileName)
+        exit(0)
 
 def getMFQuotesMWBS4(dataFileName):
     MFData = DS.getData(dataFileName)
@@ -801,7 +803,10 @@ def getMFQuotesMWBS4(dataFileName):
             MFData[dataName][quote]['ScrapeTag'] = datetime.now()
     
     logging.info('Total quotes in data: %s' % len(MFData['Quotes']))
-    DS.saveData(MFData, dataFileName)
+    
+    if not DS.saveData(MFData, dataFileName):
+        logging.info('%s: Stop saving data and exit program' % dataFileName)
+        exit(0)
 
 def getMFTypeMSBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
     MFData = DS.getData(dataFileName)
@@ -829,7 +834,9 @@ def getMFTypeMSBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
             MFData[dataName][quote]['Type'] = data
             sIndex += 1
         
-        DS.saveData(MFData, dataFileName)
+        if not DS.saveData(MFData, dataFileName):
+            logging.info('%s: Stop saving data and exit program' % dataFileName)
+            exit(0)
         
         sTotal = sTotal - len(block)
 
@@ -870,7 +877,9 @@ def getMFQuoteDataMSBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
                 MFData[dataName][quote][attribute] = value
             sIndex += 1
 
-        DS.saveData(MFData, dataFileName)
+        if not DS.saveData(MFData, dataFileName):
+            logging.info('%s: Stop saving data and exit program' % dataFileName)
+            exit(0)
         
         sTotal = sTotal - len(block)
 
@@ -899,7 +908,9 @@ def getMFQuoteDataMWBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
                 MFData[dataName][quote][attribute] = value
             sIndex += 1
 
-        DS.saveData(MFData, dataFileName)
+        if not DS.saveData(MFData, dataFileName):
+            logging.info('%s: Stop saving data and exit program' % dataFileName)
+            exit(0)
         
         sTotal = sTotal - len(block)
 
@@ -928,7 +939,9 @@ def getMFHoldingsDataMWBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
                 MFData[dataName][quote][attribute] = value
             sIndex += 1
 
-        DS.saveData(MFData, dataFileName)
+        if not DS.saveData(MFData, dataFileName):
+            logging.info('%s: Stop saving data and exit program' % dataFileName)
+            exit(0)
         
         sTotal = sTotal - len(block)
 
@@ -957,7 +970,9 @@ def getMFQuoteDataYFBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
                 MFData[dataName][quote][attribute] = value
             sIndex += 1
 
-        DS.saveData(MFData, dataFileName)
+        if not DS.saveData(MFData, dataFileName):
+            logging.info('%s: Stop saving data and exit program' % dataFileName)
+            exit(0)
         
         sTotal = sTotal - len(block)
 
@@ -986,7 +1001,9 @@ def getMFHoldingsDataYFBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
                 MFData[dataName][quote][attribute] = value
             sIndex += 1
         
-        DS.saveData(MFData, dataFileName)
+        if not DS.saveData(MFData, dataFileName):
+            logging.info('%s: Stop saving data and exit program' % dataFileName)
+            exit(0)
         
         sTotal = sTotal - len(block)
 
@@ -1030,7 +1047,9 @@ def getMFQuoteInfoYF(dataFileName, seconds=0, minutes=0, hours=0, days=0):
             MFData[dataName][quote]['Info'] = data
             sIndex += 1
 
-        DS.saveData(MFData, dataFileName)
+        if not DS.saveData(MFData, dataFileName):
+            logging.info('%s: Stop saving data and exit program' % dataFileName)
+            exit(0)
         
         sTotal = sTotal - len(block)
 
@@ -1081,7 +1100,9 @@ def getMFQuoteInfoYF(dataFileName, seconds=0, minutes=0, hours=0, days=0):
 #         #         MFData[dataName][quote][attribute] = value
 #         #     sIndex += 1
 
-#         # # DS.saveData(MFData, dataFileName)
+        # if not DS.saveData(MFData, dataFileName):
+        #     logging.info('%s: Stop saving data and exit program' % dataFileName)
+        #     exit(0)
         
 #         sTotal = sTotal - len(block)
 
@@ -1116,7 +1137,10 @@ def getMFQuoteDataETAPI(dataFileName, seconds=0, minutes=0, hours=0, days=0):
                 MFData[dataName][quote][attribute] = value
             sIndex += 1
         
-        DS.saveData(MFData, dataFileName)
+        if not DS.saveData(MFData, dataFileName):
+            logging.info('%s: Stop saving data and exit program' % dataFileName)
+            ET.endSession(session)
+            exit(0)
         
         sTotal = sTotal - len(block)
     

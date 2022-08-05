@@ -164,4 +164,6 @@ if __name__ == "__main__":
             logging.info('%s: %s' % (attribute,value))
         logging.info('')
     
-    DS.saveData(MFData, dataFileName)
+    if not DS.saveData(MFData, dataFileName):
+        logging.info('%s: Stop saving data and exit program' % dataFileName)
+        exit(0)
