@@ -6,7 +6,7 @@ if __name__ == "__main__":
     dataFileName = 'MF_DATA'
     MFData = DS.getData(dataFileName)
 
-    logging.info('Symbol, Name, Yield, MorningStarRating, ExpenseRatio')
+    logging.info('Symbol, Name, Yield, MorningStarRating, ExpenseRatio, ETrade')
 
     yields = {}
     for quote, data in MFData.items():
@@ -21,7 +21,14 @@ if __name__ == "__main__":
     for value in values:
         for quote, yvalue in yields.items():
             if yvalue == value:
-                logging.info('%s, %s, %s, %s, %s' % (quote.split(':')[0], MFData[quote]['Name'], yvalue, MFData[quote]['MorningStarRating'], MFData[quote]['ExpenseRatio']))
+                symbol = quote.split(':')[0]
+                name = MFData[quote]['Name']
+                morningstar = MFData[quote]['MorningStarRating']
+                expense = MFData[quote]['ExpenseRatio']
+                etrade = 'N/A'
+                if MFData[quote]['ETradeAvailable'] != None:
+                    etrade = MFData[quote]['ETradeAvailable']
+                logging.info('%s, %s, %s, %s, %s, %s' % (symbol, name, yvalue, morningstar, expense, etrade))
 
 
 
