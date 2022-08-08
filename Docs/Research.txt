@@ -156,7 +156,16 @@ data to find:
     
     - TARGET DATE
 
-- Allocation
+    - LONG-SHORT EQUITY
+        - Long-short equity is an investment strategy that seeks to take a long position in underpriced stocks while selling short overpriced shares
+        - Long-short seeks to augment traditional long-only investing by taking advantage of profit opportunities from securities identified as both
+          under-valued and over-valued.
+        - Long-short equity is commonly used by hedge funds, which often take a relative long bias—for instance, a 130/30 strategy where
+          long exposure is 130% of AUM and 30% is short exposure.
+
+- Allocation:
+    - Asset allocation sums up to 100%,  which means that the invested volume and cash all together build total net assets.
+    - Shorting on the asset may cause negative allocation
 
 - Minimum Investment Amount
     - Larger amounts have normaly lower Fees
@@ -166,6 +175,20 @@ data to find:
         - Running cost to maintain fund
         - percent of value of your account taken out in certain timely period
         - 1% considered high, 0.5% is common
+        - Total Expense Ratio:
+            - Measures the total costs related to managing an investment fund
+            - It is also the total cost of an investment to an investor. TER is important to investors because it determines
+              whether an investment is profitable or otherwise given its associated costs.
+        - Net Expense Ratio:
+            - Net expense ratio and 'after reimbursement expense ratio' are other terms that have the same meaning as the total expense ratio (TER).
+            - This ratio reflects the percentage of mutual fund or ETF assets steered toward a fund's operating expenses and
+              fund management fees. It's basically a list of fund expenses, minus brokerage costs and sales charges, and is
+              calculated into the fund's net asset value (NAV.)
+        - Gross Expense Ratio:
+            - Measures the total percentage of the mutual funds assets used in operating or managing the fund
+        - Adjusted Expense Ratio:
+            - Excludes certain variable investment-related expenses, such as interest from borrowings and dividends on borrowed securities,
+              sallowing for more consistent cost comparisons across funds
     - Front-endLoad:
         - If buying or selling directly you could be charged for a load = comission (in percent)
         - Most funds don't anymore
@@ -301,4 +324,9 @@ https://www.advisorkhoj.com/mutual-funds-research/mutual-fund-portfolio-overlap
 https://www.thefundoo.com/Tools/PortfolioOverlap
 https://freefincal.com/mutual-fund-portfolio-overlap-tool/
 https://youtu.be/-enjklxKEio
-
+https://thebusinessprofessor.com/en_US/investments-trading-financial-markets/total-expense-ratio-definition
+https://www.anevis-solutions.com/2019/besides-shorting-can-cause-weighting-assets-allocation-statistic-get-negative/
+https://youtu.be/HrKF5RXc9kE
+https://traders-paradise.com/magazine/2020/04/negative-numbers-in-asset-allocation/
+https://www.investopedia.com/terms/l/long-shortequity.asp
+https://www.investor.gov/introduction-investing/investing-basics/how-stock-markets-work/stock-purchases-and-sales-long-and
