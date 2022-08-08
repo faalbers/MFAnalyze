@@ -4,7 +4,7 @@ import logging
 import ExchangeInfo as EI
 
 if __name__ == "__main__":
-    DS.setupLogging('MFAnalyze.log', timed=False, new=True)
+    DS.setupLogging('MFAnalyzeTest.log', timed=False, new=True)
 
     scrapedFileName = 'MF_DATA_SCRAPED'
     MFSData = DS.getData(scrapedFileName)
