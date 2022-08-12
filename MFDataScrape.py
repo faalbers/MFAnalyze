@@ -724,6 +724,32 @@ def mfQuoteInfoYFProc(quote):
 
 # --- MAIN SCRAPERS ---
 
+def getMFExchangeISOBS4(dataFileName):
+    MFData = DS.getData(dataFileName)
+    if not 'ExchangeCodes' in MFData: MFData['ExchangeCodes'] = {}
+
+    url = 'https://www.iotafinance.com/en/ISO-10383-Market-Identification-Codes-MIC.html'
+    r = DS.getRequest(url)
+    statusCode = r.status_code
+
+    if statusCode != 200:
+        logging.info('Could not find Stock Exchange ISO codes !')
+        return
+    
+    soup = BeautifulSoup(r.text, 'html.parser')
+
+    for element in soup.find_all('li', {'class': 'mic-list-element'}):
+        names = element.find('div', {'class': 'row'}).find_all('div')
+        MFData['ExchangeCodes'][names[0].text.strip()] = names[2].text.strip()
+
+    # # some are missing
+    # MFData['CountryCodes']['South Korea'] = 'KR'
+    # MFData['CountryCodes']['Vietnam'] = 'VN'
+
+    if not DS.saveData(MFData, dataFileName):
+        logging.info('%s: Stop saving data and exit program' % dataFileName)
+        exit(0)
+
 def getMFCountryISOBS4(dataFileName):
     MFData = DS.getData(dataFileName)
     if not 'CountryCodes' in MFData: MFData['CountryCodes'] = {}
@@ -1149,10 +1175,13 @@ def getMFQuoteDataETAPI(dataFileName, seconds=0, minutes=0, hours=0, days=0):
 if __name__ == "__main__":
     scrapedFileName = 'MF_DATA_SCRAPED'
     historyUpdateDays = 10
-    DS.setupLogging('MFDataScrape.log', timed=True, new=False)
+    DS.setupLogging('MFDataScrape.log', timed=True, new=True)
 
-    # # create MFData by retrieving country ISO codes
+    # # retrieving country ISO codes
     # getMFCountryISOBS4(scrapedFileName)
+
+    # # retrieving stock exchange ISO codes
+    # getMFExchangeISOBS4(scrapedFileName)
 
     # # create MFData by retrieving mutual funds from MarketWatch
     # getMFQuotesMWBS4(scrapedFileName)
@@ -1181,9 +1210,9 @@ if __name__ == "__main__":
     # # slow because of blocking
     # getMFHoldingsDataYFBS4(scrapedFileName, days=historyUpdateDays)
 
-    # get quote info from YahooFinance
-    # very slow because of blocking, slowest of them all
-    getMFQuoteInfoYF(scrapedFileName, days=historyUpdateDays)
+    # # get quote info from YahooFinance
+    # # very slow because of blocking, slowest of them all
+    # getMFQuoteInfoYF(scrapedFileName, days=historyUpdateDays)
 
     # # in progress
     # # get holdings data from MorningStar, needs Selenium drivers

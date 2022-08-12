@@ -8,7 +8,8 @@ if __name__ == "__main__":
     DS.setupLogging('MFDataCreate.log', timed=False, new=True)
 
     MFSData = DS.getData(scrapedFileName)
-    MFData = DS.getData(dataFileName)
+    MFData = {}
+    MFData['Quotes'] = {}
 
     # get all funds and add them alphabetically
     quotes = []
@@ -16,9 +17,32 @@ if __name__ == "__main__":
         quotes.append(quote)
     quotes.sort()
     for quote in quotes:
-        MFData[quote] = {}
+        MFData['Quotes'][quote] = {}
+
+    MFData['CountryCodes'] = {}
+    for country, countryCode in MFSData['CountryCodes'].items():
+        MFData['CountryCodes'][countryCode] = country
+
+    MFData['ExchangeCodes'] = MFSData['ExchangeCodes']
+        
+    stockCaps = set()
+    stockStyles = set()
+    bondQualities = set()
+    bondSenses = set()
     
-    for quote, data in MFData.items():
+    for quote, data in MFData['Quotes'].items():
+        quoteSplits = quote.split(':')
+        symbol = quoteSplits[0]
+        
+        exchange = None
+        if quoteSplits[1] in MFSData['ExchangeCodes']:
+            exchange = MFSData['ExchangeCodes'][quoteSplits[1]]
+            
+        countryCode = quoteSplits[2]
+        country = None
+        if countryCode != None:
+            country = MFData['CountryCodes'][countryCode]
+
         # vars that could empty or None
         allocations = None
         # stocksBondsRatio = None
@@ -60,9 +84,6 @@ if __name__ == "__main__":
         if 'BALANCED' in data['Name'].upper() and 'RISK' in data['Name'].upper():
             data['Strategies'].add('BALANCEDRISK')
 
-        # get MarketWatchQuotes data
-        data['Country'] = MFSData['MarketWatchQuotes'][quote]['Country']
-
         # handle MarketWatchQuoteData
         if quote in MFSData['MarketWatchQuoteData']:
             qdata = MFSData['MarketWatchQuoteData'][quote]
@@ -84,11 +105,16 @@ if __name__ == "__main__":
                 bondStyle = {}
                 bondStyle['CreditQuality'] = qdata['CreditQuality'].split(' / ')[0]
                 bondStyle['InterestRateSensitivity'] = qdata['InterestRateSensitivity'].split(' / ')[1]
+                bondQualities.add(bondStyle['CreditQuality'])
+                bondSenses.add(bondStyle['InterestRateSensitivity'])
+
             
             if 'Style' in qdata and qdata['Style']['Investment'] != '—':
                 stockStyle = {}
                 stockStyle['Cap'] = qdata['Style']['Investment']
                 stockStyle['Style'] = qdata['Style']['Style']
+                stockCaps.add(stockStyle['Cap'])
+                stockStyles.add(stockStyle['Style'])
             
             if 'MorningStars' in qdata:
                 morningStarRating = qdata['MorningStars']
@@ -106,23 +132,23 @@ if __name__ == "__main__":
             # Marketwatch Allocation data seemed more reliable then YahooFinance
             # because totals where closer to 100%
             if 'AssetAllocation' in qdata:
-                qdata = qdata['AssetAllocation']
+                adata = qdata['AssetAllocation']
                 stocks = 0.0
                 bonds = 0.0
                 convertible = 0.0
                 preferred = 0.0
                 other = 0.0
                 cash = 0.0
-                if 'Stocks' in qdata:
-                    stocks = qdata['Stocks'][0]
-                if 'Bonds' in qdata:
-                    bonds = qdata['Bonds'][0]
-                if 'Convertible' in qdata:
-                    convertible = qdata['Convertible'][0]
-                if 'Other' in qdata:
-                    other = qdata['Other'][0]
-                if 'Cash' in qdata:
-                    cash = qdata['Cash'][0]
+                if 'Stocks' in adata:
+                    stocks = adata['Stocks'][0]
+                if 'Bonds' in adata:
+                    bonds = adata['Bonds'][0]
+                if 'Convertible' in adata:
+                    convertible = adata['Convertible'][0]
+                if 'Other' in adata:
+                    other = adata['Other'][0]
+                if 'Cash' in adata:
+                    cash = adata['Cash'][0]
                 all = stocks + bonds + convertible + preferred + other + cash
                 if all > 0.0:
                     allocations = {}
@@ -159,7 +185,8 @@ if __name__ == "__main__":
                 etradeAvailable = 'Close'
         
         # add found vars
-        data['Allocations'] = allocations
+        data['Exchange'] = exchange
+        data['Country'] = country
         # data['StocksBondsRatio'] = stocksBondsRatio
         data['BondStyle'] = bondStyle
         data['StockStyle'] = stockStyle
@@ -167,10 +194,16 @@ if __name__ == "__main__":
         data['MinInvestment'] = minInvestment
         data['Yield'] = Yield
         data['ExpenseRatio'] = expenseRatio
+        data['AssetAllocation'] = allocations
         data['ETradeAvailable'] = etradeAvailable
+        
+    print(stockCaps)
+    print(stockStyles)
+    print(bondQualities)
+    print(bondSenses)
 
     # log quotes
-    for quote, data in MFData.items():
+    for quote, data in MFData['Quotes'].items():
         logging.info(quote)
         for attribute, value in data.items():
             logging.info('%s: %s' % (attribute,value))

@@ -162,6 +162,13 @@ data to find:
           under-valued and over-valued.
         - Long-short equity is commonly used by hedge funds, which often take a relative long bias—for instance, a 130/30 strategy where
           long exposure is 130% of AUM and 30% is short exposure.
+        - Long Position in stocks that are expected to appreciate and are underpriced
+        - Short position in stocks that are expected to decline and are overpriced
+        - Having a Long Position in a security means that you own the security. Investors maintain Long security positions in the expectation that the
+          stock will rise in value in the future. It describes what an investor has purchased when they buy a security or derivative with the
+          expectation that it will rise in value. A bullish attitude. A long position in options contracts indicates the holder owns the underlying
+          asset. Being long on a stock or bond investment is a measurement of time.
+        - Having a Short Position in a security is generally the sale of a stock you do not own.
 
 - Allocation:
     - Asset allocation sums up to 100%,  which means that the invested volume and cash all together build total net assets.
