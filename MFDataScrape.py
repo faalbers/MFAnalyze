@@ -8,6 +8,18 @@ import yfinance as yf
 
 # --- TOOLS ---
 
+def similarity(nameA, nameB):
+    nameA = nameA.upper()
+    nameB = nameB.upper()
+
+    minLen = min(len(nameA), len(nameB))
+    sameCount = 0
+    for i in range(minLen):
+        if nameA[i] != nameB[i]: break
+        sameCount += 1
+    
+    return float(sameCount) / float(minLen)
+
 def attributeCheck(attribute):
     # checks = {'NetExpenseRatio': 'ExpenseRatio',
     # 'TotalExpenseRatio': 'ExpenseRatio'}
@@ -17,6 +29,22 @@ def attributeCheck(attribute):
     return attribute
 
 def quotesNeedScrape(MFData, dataName, seconds=0, minutes=0, hours=0, days=0):
+    if not dataName in MFData: return []
+    minuteSecs = 60
+    hourSecs = minuteSecs * 60
+    daySecs = hourSecs * 24
+    totalSecs = days * daySecs + hours * hourSecs + minutes * minuteSecs + seconds
+    nowTime = datetime.now()
+    quotesDone = set()
+    for quote, data in MFData[dataName].items():
+        diffSecs = (nowTime - data['ScrapeTag']).total_seconds()
+        if diffSecs <= totalSecs:
+            quotesDone.add(quote)
+    quotes = set(MFData[dataName].keys())
+    quotes = list(quotes.difference(quotesDone))
+    return quotes
+
+def quotesNeedScrapeOLD(MFData, dataName, seconds=0, minutes=0, hours=0, days=0):
     if not 'Quotes' in MFData: return []
     quotes = list(MFData['Quotes'])
     quotes.sort()
@@ -126,7 +154,10 @@ def marketWatchPagesProc(letter):
 
     url = 'https://www.marketwatch.com/tools/markets/funds/a-z/%s/1000' % letter
     r = DS.getRequest(url)
-    statusCode = r.status_code
+    if r == None:
+        statusCode = 500
+    else:
+        statusCode = r.status_code
 
     if statusCode != 200:
         return [statusCode, pages]
@@ -145,7 +176,10 @@ def marketWatchQuotesProc(url):
     # logging.info('scraping MarketWatch quotes from: %s' % url)
     data = []
     r = DS.getRequest(url)
-    statusCode = r.status_code
+    if r == None:
+        statusCode = 500
+    else:
+        statusCode = r.status_code
 
     if statusCode != 200:
         return [statusCode, data]
@@ -159,13 +193,62 @@ def marketWatchQuotesProc(url):
         symbol = tds[0].a.small.text[1:-1]
         name = tds[0].a.text.split(';')[0]
         country = tds[1].text
-        exchange = tds[2].text
+        mic = tds[2].text
         sector = None
         if len(tds) > 3:
             sector = tds[3].text
-        data.append('%s:%s:%s:%s:%s' % (symbol, exchange, country, name, sector))
+        data.append('%s:%s:%s:%s:%s' % (symbol, mic, country, name, sector))
 
     return [statusCode, data]
+
+def mfQuoteSearchOtherMSBS4Proc(quote):
+    data = {}
+    symbolSplits = quote.split(':')
+    symbol = symbolSplits[0]
+
+    url = 'https://www.morningstar.com/search?query=%s' % symbol
+
+    r = DS.getRequest(url)
+    if r == None:
+        statusCode = 500
+    else:
+        statusCode = r.status_code
+
+    if statusCode != 200:
+        return [statusCode, data]
+    
+    soup = BeautifulSoup(r.text, 'html.parser')
+
+    empty = soup.find('div', class_='search-all__empty')
+    if empty != None:
+        return [statusCode, data]
+
+    sections = soup.find_all('section', class_='search-all__section')
+    for section in sections:
+        sectionName = section.text.strip().split('\n')[0]
+        if sectionName == 'U.S. Securities' or sectionName == 'Foreign Securities':
+            for div in section.find_all('div', class_='mdc-security-module search-all__hit'):
+                splits = div.text.split()
+                foundSymbol = splits[-1]
+                if foundSymbol != symbol: continue
+                foundExchange = splits[-2]
+                foundQuote = '%s:%s' % (foundSymbol, foundExchange)
+                if foundQuote == quote: continue
+                foundName = ' '.join(splits[:-2])
+                data[foundQuote] = foundName
+    return [statusCode, data]
+
+def mfFundTypeMSBS4Proc(quote):
+    splits = quote.split(':')
+    symbol = splits[0]
+    exchange = splits[1]
+    mfTypes = ['FUNDS', 'CEFS', 'ETFS']
+    for mfType in mfTypes:
+        url = 'https://www.morningstar.com/%s/%s/%s/quote' % (mfType, exchange, symbol)
+        scode = DS.getStatusCode(url)
+        if scode == 200:
+            return [scode, mfType[:-1]]
+    return [scode, None]
 
 def mfTypeMSBS4Proc(quote):
     msTypes = ['FUNDS', 'CEFS', 'ETFS', 'STOCKS']
@@ -186,100 +269,67 @@ def mfTypeMSBS4Proc(quote):
             return [scode, None]
     return [scode, None]
 
-def mfQuoteDataMSBS4Proc(quoteVar):
+def mfQuoteDataMSBS4Proc(quote):
     data = {}
-    qvSplit = quoteVar[0].split(':')
-    symbol = qvSplit[0]
-    exchange = qvSplit[1]
-    type = quoteVar[1]
+    splits = quote.split(':')
+    symbol = splits[0]
+    exchange = splits[1]
+    mfTypes = ['FUNDS', 'CEFS', 'ETFS']
+    statusCode = 404
+    r = None
+    fundType = None
+    for mfType in mfTypes:
+        url = 'https://www.morningstar.com/%s/%s/%s/quote' % (mfType, exchange, symbol)
+        r = DS.getRequest(url)
+        if r == None:
+            statusCode = 500
+        else:
+            statusCode = r.status_code
+        if statusCode == 200:
+            fundType = mfType[:-1]
+            break
+        else:
+            r = None
 
-    # XNYS: https://www.morningstar.com/cefs/xnys/PAXS/quote
-    # XNYS: https://www.morningstar.com/stocks/xnys/MVO/quote
-    # XASE: https://www.morningstar.com/cefs/xase/AEF/quote
-    # ARCX: https://www.morningstar.com/etfs/arcx/SPSM/quote
-    # BATS: https://www.morningstar.com/etfs/bats/STOTS/quote
-    # XNAS: https://www.morningstar.com/funds/xnas/VITAX/quote
-    # XNAS: https://www.morningstar.com/etfs/xnas/SOGU/quote
-    # XNAS: https://www.morningstar.com/stocks/xnas/HRZN/quote
-    # XETR: None LMWE
-    # OOTC: https://www.morningstar.com/stocks/pinx/AWRRF/quote
-    # OOTC: None ISMXF
+    if r == None:
+        return [statusCode, None]
 
-    # https://www.morningstar.com/ETFS/XNAS/EMXF/quote
+    data['FundType'] = fundType
 
-    url = 'https://www.morningstar.com/%s/%s/%s/quote' % (type+'S', exchange, symbol)
-    
-    r = DS.getRequest(url)
-    statusCode = r.status_code
-
-    if statusCode != 200:
-        return [statusCode, data]
-    
     soup = BeautifulSoup(r.text, 'html.parser')
 
     morningStars = soup.find('span', class_='mdc-security-header__star-rating')
     if morningStars != None:
-        data['MorningStars'] = int(morningStars['title'].split()[0])
+        data['Rating'] = int(morningStars['title'].split()[0])
 
-    if type == 'FUND':
+    if fundType == 'FUND':
         content = soup.find('div', {'class': 'fund-quote__data'})
         if content == None: return [statusCode, data]
+        attrValues = {}
         for item in content.find_all('div', {'class': 'fund-quote__item'}):
             # get attribute names
             label = item.find('div', {'class': 'fund-quote__label'})
-            attributes = label.text.split('\n')
-            if len(attributes) > 1:
-                attributes = attributes[1]
-            else:
-                attributes = attributes[0]
-            attributes = attributes.replace('\t','')
+            attributes = label.text.strip()
             attributes = attributes.split(' / ')
-
+            
             # get values
             value = item.find('div', {'class': 'fund-quote__value'})
             values = []
             if value != None:
-                for span in value.find_all('span'):
-                    spanValues = []
-                    for spanValue in span.text.split('\n'):
-                        spanValues.append(spanValue.replace('\t',''))
-                    values.append(''.join(spanValues))
+                values = value.text.strip().split('/')
+                for i in range(len(values)): values[i] = values[i].strip().replace('\t','').replace('\n',' ')
             else:
-                values.append(item.find_all('span')[-1].text)
-
-            # add to data
-            aIndex = 0
-            cleanupAttributes = {}
-            for attribute in attributes:
-                if attribute == 'Investment Style':
-                    attrSplit = attribute.split()
-                    valueSplit = values[aIndex].split()
-                    data['Style'] = {}
-                    data['Style'][attrSplit[0]] = valueSplit[0]
-                    if len(valueSplit) >= 2:
-                        data['Style'][attrSplit[1]] = valueSplit[1]
-                    else:
-                        data['Style'][attrSplit[1]] = valueSplit[-1]
-                else:
-                    if aIndex <= (len(values)-1):
-                        cleanupAttributes[attribute] = values[aIndex]
-                    else:
-                        cleanupAttributes[attribute] = values[-1]
-                aIndex += 1
-            for attr, value in cleanUpAttributes(cleanupAttributes).items():
-                data[attr] = value
-
-    elif type == 'ETF':
-        content = soup.find('div', {'class': 'etf__content'})
-        # data unaccessible with BS4
-    elif type == 'CEF':
-        content = soup.find('div', {'class': 'cef__content'})
-        # data unaccessible with BS4
-    elif type == 'STOCK':
-        content = soup.find('div', {'class': 'stock__content'})
-        # data unaccessible with BS4
-    else:
-        logging.info('%s: No recognizable type for MorningStar: %s' % (symbol, type))
+                values = item.find_all('span')[-1].text.strip().split('/')
+                for i in range(len(values)): values[i] = values[i].strip()
+            
+            if len(attributes) != len(values): continue
+            for i in range(len(attributes)):
+                attrValues[attributes[i]] = values[i]
+    
+        for attr, val in cleanUpAttributes(attrValues).items():
+            data[attr] = val
+    
+    # Only FUND type pages have accessible non JavaScript data
 
     return [statusCode, data]
 
@@ -724,75 +774,29 @@ def mfQuoteInfoYFProc(quote):
 
 # --- MAIN SCRAPERS ---
 
-def getMFExchangeISOBS4(dataFileName):
+def getMFBASEData(dataFileName):
+    logging.info('Retrieving BASE Data')
     MFData = DS.getData(dataFileName)
-    if not 'ExchangeCodes' in MFData: MFData['ExchangeCodes'] = {}
-
-    url = 'https://www.iotafinance.com/en/ISO-10383-Market-Identification-Codes-MIC.html'
-    r = DS.getRequest(url)
-    statusCode = r.status_code
-
-    if statusCode != 200:
-        logging.info('Could not find Stock Exchange ISO codes !')
-        return
+    BData = DS.getData('BASE_DATA_SCRAPED')
     
-    soup = BeautifulSoup(r.text, 'html.parser')
-
-    for element in soup.find_all('li', {'class': 'mic-list-element'}):
-        names = element.find('div', {'class': 'row'}).find_all('div')
-        MFData['ExchangeCodes'][names[0].text.strip()] = names[2].text.strip()
-
-    # # some are missing
-    # MFData['CountryCodes']['South Korea'] = 'KR'
-    # MFData['CountryCodes']['Vietnam'] = 'VN'
-
-    if not DS.saveData(MFData, dataFileName):
-        logging.info('%s: Stop saving data and exit program' % dataFileName)
-        exit(0)
-
-def getMFCountryISOBS4(dataFileName):
-    MFData = DS.getData(dataFileName)
-    if not 'CountryCodes' in MFData: MFData['CountryCodes'] = {}
-
-    url = 'https://www.iban.com/country-codes'
-    r = DS.getRequest(url)
-    statusCode = r.status_code
-
-    if statusCode != 200:
-        logging.info('Could not find Country ISO codes !')
-        return
+    for dataName in BData.keys():
+        MFData[dataName] = BData[dataName]
     
-    soup = BeautifulSoup(r.text, 'html.parser')
-
-    table = soup.find('table', {'id': 'myTable'})
-
-    for tr in table.find_all('tr'):
-        elements = tr.text.split('\n')
-        if elements[1] == 'Country': continue
-        MFData['CountryCodes'][elements[1]] = elements[2]
-    
-    # some are missing
-    MFData['CountryCodes']['South Korea'] = 'KR'
-    MFData['CountryCodes']['Vietnam'] = 'VN'
-
     if not DS.saveData(MFData, dataFileName):
         logging.info('%s: Stop saving data and exit program' % dataFileName)
         exit(0)
 
 def getMFQuotesMWBS4(dataFileName):
+    logging.info('Retrieving all Fund Quotes from MarketWatch')
     MFData = DS.getData(dataFileName)
     dataName = 'MarketWatchQuotes'
-    if not 'CountryCodes' in MFData:
-        logging.info('Did not find country codes in data. Aborting !')
-        return
-    if not 'Quotes' in MFData: MFData['Quotes'] = set()
-    if not dataName in MFData: MFData['MarketWatchQuotes'] = {}
+    if not dataName in MFData: MFData[dataName] = {}
 
-    # scrape for alphabetic list pages
+    # scrape for alphabetic list pages in MW
     letters = [chr(x) for x in range(65, 91)]
     results = DS.multiScrape(letters, marketWatchPagesProc)
-    
-    # get page url links
+
+    # get MW page url links
     lIndex = 0
     urls = []
     for letter in letters:
@@ -805,34 +809,79 @@ def getMFQuotesMWBS4(dataFileName):
     # get quotes from MarketWatch pages
     results = DS.multiScrape(urls, marketWatchQuotesProc)
     if 403 in results[0]:
-        logging.info('PAge was blocked')
-
+        logging.info('At least one page was blocked')
+        return
+    
+    # create quotes set
+    micSubstitudes = {'': 'XXXX', 'XPLU': 'ISDX'}
     for result in results[1]:
         for data in result:
             splits = data.split(':')
             symbol = splits[0]
-            exchange = splits[1]
+            mic = splits[1]
             country = splits[2]
             name = splits[3]
             sector = splits[4]
-            countryCode = None
-            for countryName, code in MFData['CountryCodes'].items():
-                if country in countryName:
-                    countryCode = code
-            quote = '%s:%s:%s' % (symbol, exchange, countryCode)
-            MFData['Quotes'].add(quote)
+            if mic in micSubstitudes:
+                mic = micSubstitudes[mic]
+            quote = '%s:%s' % (symbol, mic)
             if not quote in MFData[dataName]:
                 MFData[dataName][quote] = {}
-            MFData[dataName][quote]['Name'] = name
-            MFData[dataName][quote]['Country'] = country
-            MFData[dataName][quote]['Sector'] = sector
             MFData[dataName][quote]['ScrapeTag'] = datetime.now()
+            MFData[dataName][quote]['Symbol'] = symbol
+            MFData[dataName][quote]['MIC'] = mic
+            MFData[dataName][quote]['Country'] = country
+            MFData[dataName][quote]['Name'] = name
+            MFData[dataName][quote]['Sector'] = sector
     
-    logging.info('Total quotes in data: %s' % len(MFData['Quotes']))
+    logging.info('Total quotes in data: %s' % len(MFData[dataName]))
     
     if not DS.saveData(MFData, dataFileName):
         logging.info('%s: Stop saving data and exit program' % dataFileName)
         exit(0)
+
+def getMFAddSimilarQuotesMSBS4(dataFileName):
+    logging.info('Adding similar funds symbol quotes from MornongStar Search')
+    MFData = DS.getData(dataFileName)
+    dataName = 'MarketWatchQuotes'
+    micSubstitudes = {'': 'XXXX', 'XPLU': 'ISDX'}
+    if not dataName in MFData:
+        logging.info('No s quotes found in data !' % dataName)
+        return
+    
+    quotes = list(MFData[dataName].keys())
+    mwQuoteCount = len(quotes)
+
+    sTotal = len(quotes)
+    for block in DS.makeMultiBlocks(quotes, 300):
+        logging.info('Symbols search with MorningStar: %s' % sTotal)
+        results = DS.multiScrape(block, mfQuoteSearchOtherMSBS4Proc)
+
+        sIndex = 0
+        for data in results[1]:
+            quote = block[sIndex]
+            name = MFData[dataName][quote]['Name']
+            for fquote, fname in data.items():
+                if not fquote in MFData[dataName]:
+                    if similarity(fname, name) > 0.4:
+                        splits = fquote.split(':')
+                        fsymbol = splits[0]
+                        fmic = splits[1]
+                        MFData[dataName][fquote] = {}
+                        MFData[dataName][fquote]['ScrapeTag'] = datetime.now()
+                        MFData[dataName][fquote]['Symbol'] = fsymbol
+                        MFData[dataName][fquote]['MIC'] = fmic
+                        MFData[dataName][fquote]['Name'] = fname
+            sIndex += 1
+  
+        if not DS.saveData(MFData, dataFileName):
+            logging.info('%s: Stop saving data and exit program' % dataFileName)
+            exit(0)
+        
+        sTotal = sTotal - len(block)
+    
+    addCount = len(MFData[dataName].keys()) - mwQuoteCount
+    logging.info('Added %s more quotes to %s' % (addCount, dataName))
 
 def getMFTypeMSBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
     MFData = DS.getData(dataFileName)
@@ -867,40 +916,36 @@ def getMFTypeMSBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
         sTotal = sTotal - len(block)
 
 def getMFQuoteDataMSBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
+    logging.info('Retrieving quote data of only funds in MorningStar')
     MFData = DS.getData(dataFileName)
     dataName = 'MorningStarQuoteData'
-    if not 'Quotes' in MFData:
-        logging.info('No quotes found in data !')
-        return
-    if not 'MorningStarTypes' in MFData:
-        logging.info('Could not retrieve Type data !')
+    if not 'MarketWatchQuotes' in MFData:
+        logging.info('No MarketWatchQuotes found in data !')
         return
     if not dataName in MFData: MFData[dataName] = {}
 
-    todoQuotes = quotesNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days)
-    todoQuotes = set(todoQuotes)
-    quoteTypes = set()
-    for quote, data in MFData['MorningStarTypes'].items():
-        if data['Type'] != None: quoteTypes.add(quote)
-    todoQuotes = list(quoteTypes.intersection(set(todoQuotes)))
-    todoQuotes.sort()
-    todoQuoteType = []
-    for quote in todoQuotes:
-        todoQuoteType.append([quote, MFData['MorningStarTypes'][quote]['Type']])
+    # find quotes that need to be checked  by MorningStar
+    mwQuotes = set(MFData['MarketWatchQuotes'].keys())
+    msQuotes = set(MFData[dataName].keys())
+    msTodoQuotes = set(quotesNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days))
+    quotes = list(mwQuotes.difference(msQuotes.difference(msTodoQuotes)))
 
-    sTotal = len(todoQuoteType)
-    for block in DS.makeMultiBlocks(todoQuoteType, 300):
-        logging.info('quotes to scrape quote data with MorningStar: %s' % sTotal)
-        quoteData = DS.multiScrape(block, mfQuoteDataMSBS4Proc)
+    sTotal = len(quotes)
+    for block in DS.makeMultiBlocks(quotes, 300):
+        logging.info('Scrape quote data with MorningStar: %s' % sTotal)
+        results = DS.multiScrape(block, mfQuoteDataMSBS4Proc)
 
         sIndex = 0
-        for data in quoteData[1]:
-            quote = block[sIndex][0]
-            if not quote in MFData[dataName]: MFData[dataName][quote] = {}
-            MFData[dataName][quote]['ScrapeTag'] = datetime.now()
-            for attr, value in data.items():
-                attribute = attributeCheck(attr)
-                MFData[dataName][quote][attribute] = value
+        for data in results[1]:
+            quote = block[sIndex]
+            if data != None:
+                if not quote in MFData[dataName]: MFData[dataName][quote] = {}
+                MFData[dataName][quote]['ScrapeTag'] = datetime.now()
+                for attr, value in data.items():
+                    MFData[dataName][quote][attr] = value
+            elif quote in MFData[dataName]:
+                logging.info('Taking out quote from MorningStarQuoteData: %s' % quote)
+                MFData[dataName].pop(quote)
             sIndex += 1
 
         if not DS.saveData(MFData, dataFileName):
@@ -1175,24 +1220,57 @@ def getMFQuoteDataETAPI(dataFileName, seconds=0, minutes=0, hours=0, days=0):
 if __name__ == "__main__":
     scrapedFileName = 'MF_DATA_SCRAPED'
     historyUpdateDays = 10
-    DS.setupLogging('MFDataScrape.log', timed=True, new=True)
+    DS.setupLogging('MFDataScrape.log', timed=True, new=False)
 
-    # # retrieving country ISO codes
-    # getMFCountryISOBS4(scrapedFileName)
-
-    # # retrieving stock exchange ISO codes
-    # getMFExchangeISOBS4(scrapedFileName)
+    # # copy Base Data to Mutual Fund Data
+    # getMFBASEData(scrapedFileName)
 
     # # create MFData by retrieving mutual funds from MarketWatch
+    # # 40504 quotes = 00:00:13
     # getMFQuotesMWBS4(scrapedFileName)
+
+    # # Search for more exchanges on symbols through MorningStar
+    # # 40504 quotes = 00:25:53
+    # getMFAddSimilarQuotesMSBS4(scrapedFileName)
+
+    # # get quote data from MorningStar
+    # # 40794 quotes = 00:40:32
+    # getMFQuoteDataMSBS4(scrapedFileName, days=historyUpdateDays)
+
+    
+    
+    # MFData = DS.getData(scrapedFileName)
+
+    # print(len(MFData['MarketWatchQuotes']))
+    # print(len(MFData['MorningStarQuoteData']))
+
+    # funds = 0
+    # etfs = 0
+    # cefs = 0
+    # for quote, data in MFData['MorningStarQuoteData'].items():
+    #     if data['FundType'] == 'FUND':
+    #         funds += 1
+    #         logging.info('%s: %s' % (quote, MFData['MarketWatchQuotes'][quote]['Name']))
+    #     elif data['FundType'] == 'ETF':
+    #         etfs += 1
+    #     elif data['FundType'] == 'CEF':
+    #         cefs += 1
+    # print(funds)
+    # print(etfs)
+    # print(cefs)
+
+    # MFData.pop('MarketWatchQuotes')
+    # DS.saveData(MFData, scrapedFileName)
+
+    # 'FUNDS', 'CEFS', 'ETFS', 'STOCKS'
+    # 'https://www.morningstar.com/%s/%s/%s/quote' % (msType, exchange, symbol)
+    # https://www.morningstar.com/FUNDS/XLON/WCLD/quote
+
 
     # # get investment type fom MorningStar links
     # # fast (1h 23 min for 38043 quotes) (29 min for 38040 quotes)
     # getMFTypeMSBS4(scrapedFileName, days=historyUpdateDays)
 
-    # # get quote data from MorningStar
-    # # fast
-    # getMFQuoteDataMSBS4(scrapedFileName, days=historyUpdateDays)
 
     # # get quote data from MarketWatch
     # # slow because of blocking

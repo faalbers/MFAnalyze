@@ -3,11 +3,25 @@ import logging
 import ExchangeInfo as EI
 
 attributeDocs = {
-    'CountryCodes': {
-        '__doc__': 'Country ISO codes'
+    'CISOs': {
+        '__doc__': 'Country ISO code list'
     },
-    'Quotes': {
-        '__doc__': "Scraped Quote tags in form 'Symbol:Exchange:Country ISO Code'"
+    'MICs': {
+        '__doc__': 'Exchange Market ISO code list',
+        'MIC': {
+            'Name': {
+                '__doc__': 'Descriptive Full Exchange Market Name'
+            },
+            'Country': {
+                '__doc__': "Country Exchange Market is based at in the form of 'XX - Country Name'. XX is the Country ISO code. Used to extract CISO of MIC"
+            }
+        }
+    },
+    'MICToCISO': {
+        '__doc__': 'Exchange Market ISO code to Country ISO codes Link list '
+    },
+    'CISOToMIC': {
+        '__doc__': 'Country ISO code to Exchange Market ISO codes Link list '
     },
     'MarketWatchQuotes': {
         '__doc__': 'Quotes and base data scraped from MarketWatch Mutual Fund Lists',
@@ -62,14 +76,8 @@ attributeDocs = {
     'MorningStarQuoteData': {
         '__doc__': 'Scraped Quote Data from MorningStar',
         'Quote': {
-            'Style': {
-                '__doc__': 'Stock Investment Style',
-                'Investment': {
-                    '__doc__': 'Capitalization: Small, Mid, Large, — . Used for Data Creation',
-                },
-                'Style': {
-                    '__doc__': 'Style: Value, Blend, Growth, — . Used for Data Creation',
-                }
+            'InvestmentStyle': {
+                '__doc__': 'Stock Investment Style = (Small, Mid, Large) (Value, Blend, Growth). Used for Data Creation'
             },
             'CreditQuality': {
                 '__doc__': "Bond Investment Style: Credit Quality: 'Low, Medium, High / Limited, Moderate, Extensive' . Value used before the / . Used for Data Creation"
@@ -77,7 +85,7 @@ attributeDocs = {
             'InterestRateSensitivity': {
                 '__doc__': "Bond Investment Style: Investment Rate Sensitivity: 'Low, Medium, High / Limited, Moderate, Extensive' . Value used after the / . Used for Data Creation"
             },
-            'MorningStars': {
+            'Rating': {
                 '__doc__': 'MorningStar Rating. Used for Data Creation'
             },
             'AdjExpenseRatio': {
@@ -142,11 +150,11 @@ attributeDocs = {
 def dictRecurse(data, attributes):
     if type(data) == dict:
         for attr, subAttributes in data.items():
-            if attr.count(':') == 2: attr = 'Quote'
+            if attr.count(':') == 1: attr = 'Quote'
             
             if not attr in  attributes:
                 if attr == 'Quote':
-                    attributes[attr] = {'__doc__': "List of Quotes in form 'Symbol:Exchange:Country ISO Code'"}
+                    attributes[attr] = {'__doc__': "List of Quotes in form 'Symbol:Market Exchange ISO code'"}
                 elif attr == 'Holdings':
                     attributes[attr] = {'__doc__': 'Dict with Holdings percentages: {SYMBOL: [amount, unit]}: unit is %'}
                 elif attr == 'ScrapeTag':
@@ -154,9 +162,16 @@ def dictRecurse(data, attributes):
                 else:
                     attributes[attr] = {'__doc__': ''}
             
-            if attr == 'CountryCodes':
-                for country, countryCode in subAttributes.items():
-                    attributes[attr][country] = {'__doc__': countryCode}
+            if attr == 'CISOs':
+                attributes[attr]['CISO'] = {'__doc__': 'Country name'}
+            elif attr == 'MICToCISO':
+                attributes[attr]['MIC'] = {'__doc__': 'List of Country ISO codes where MIC is based at. Should be all just one'}
+            elif attr == 'CISOToMIC':
+                attributes[attr]['CISO'] = {'__doc__': 'List of Exchange Market ISO code based in this Country ISO code'}
+            elif attr == 'MICs':
+                attributes[attr]['MIC'] = {'__doc__': 'Exchange Market ISO code'}
+                for MIC, micAttributes in subAttributes.items():
+                    dictRecurse(micAttributes, attributes[attr]['MIC'])
             elif attr == 'Holdings':
                 continue
             else:
@@ -180,6 +195,7 @@ if __name__ == "__main__":
     DS.setupLogging('MFSAttributes.log', timed=False, new=True)
 
     scrapedFileName = 'MF_DATA_SCRAPED'
+    # scrapedFileName = 'BASE_DATA_SCRAPED'
     MFSData = DS.getData(scrapedFileName)
 
     # attributes check

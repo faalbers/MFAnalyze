@@ -54,7 +54,8 @@ def getData(fileName):
         with open(dataFile, 'rb') as f:
             data = pickle.load(f)
     else:
-        logging.info('data file not found: %s' % dataFile)
+        logging.info('data file not found     : %s' % dataFile)
+        logging.info('creating empty data file: %s' % dataFile)
     return data
 
 def saveData(data, fileName):
@@ -85,11 +86,15 @@ def makeMultiBlocks(data, blockSize):
 def getRequest(url, maxRetries=10):
     headers =  {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36'}
     statusCode = 500
-    retries = -1
-    while(retries < maxRetries and statusCode == 500):
+    retries = 0
+    r = None
+    while(retries <= maxRetries and statusCode == 500):
         retries = retries + 1
-        r = requests.get(url, headers=headers)
-        statusCode = r.status_code
+        try:
+            r = requests.get(url, headers=headers)
+            statusCode = r.status_code
+        except:
+            r = None
     return r    
 
 def getStatusCode(url, maxRetries=10):
