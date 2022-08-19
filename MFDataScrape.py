@@ -28,7 +28,7 @@ def attributeCheck(attribute):
     if attribute in checks: return checks[attribute]
     return attribute
 
-def quotesNeedScrape(MFData, dataName, seconds=0, minutes=0, hours=0, days=0):
+def quotesNeedScrape(MFData, dataName, needScrape=True, seconds=0, minutes=0, hours=0, days=0):
     if not dataName in MFData: return []
     minuteSecs = 60
     hourSecs = minuteSecs * 60
@@ -41,26 +41,10 @@ def quotesNeedScrape(MFData, dataName, seconds=0, minutes=0, hours=0, days=0):
         if diffSecs <= totalSecs:
             quotesDone.add(quote)
     quotes = set(MFData[dataName].keys())
-    quotes = list(quotes.difference(quotesDone))
-    return quotes
-
-def quotesNeedScrapeOLD(MFData, dataName, seconds=0, minutes=0, hours=0, days=0):
-    if not 'Quotes' in MFData: return []
-    quotes = list(MFData['Quotes'])
-    quotes.sort()
-    if not dataName in MFData: return quotes
-    minuteSecs = 60
-    hourSecs = minuteSecs * 60
-    daySecs = hourSecs * 24
-    totalSecs = days * daySecs + hours * hourSecs + minutes * minuteSecs + seconds
-    nowTime = datetime.now()
-    quotesDone = set()
-    for quote, data in MFData[dataName].items():
-        diffSecs = (nowTime - data['ScrapeTag']).total_seconds()
-        if diffSecs <= totalSecs:
-            quotesDone.add(quote)
-    quotes = list(MFData['Quotes'].difference(quotesDone))
-    quotes.sort()
+    if needScrape:
+        quotes = list(quotes.difference(quotesDone))
+    else:
+        quotes = list(quotesDone)
     return quotes
 
 def cleanUpAttributes(attributes, capitalize=True, upper=False):
@@ -238,37 +222,6 @@ def mfQuoteSearchOtherMSBS4Proc(quote):
                 data[foundQuote] = foundName
     return [statusCode, data]
 
-def mfFundTypeMSBS4Proc(quote):
-    splits = quote.split(':')
-    symbol = splits[0]
-    exchange = splits[1]
-    mfTypes = ['FUNDS', 'CEFS', 'ETFS']
-    for mfType in mfTypes:
-        url = 'https://www.morningstar.com/%s/%s/%s/quote' % (mfType, exchange, symbol)
-        scode = DS.getStatusCode(url)
-        if scode == 200:
-            return [scode, mfType[:-1]]
-    return [scode, None]
-
-def mfTypeMSBS4Proc(quote):
-    msTypes = ['FUNDS', 'CEFS', 'ETFS', 'STOCKS']
-    symbolSplits = quote.split(':')
-    symbol = symbolSplits[0]
-    exchange = symbolSplits[1]
-    scode = None
-    for msType in msTypes:
-        url = 'https://www.morningstar.com/%s/%s/%s/quote' % (msType, exchange, symbol)
-        scode = DS.getStatusCode(url)
-        if scode == 200:
-            return [scode, msType]
-        elif scode != 404:
-            if scode == 403:
-                logging.info('blocked: %s' % url)
-            elif scode == 500:
-                logging.info('error: %s' % url)
-            return [scode, None]
-    return [scode, None]
-
 def mfQuoteDataMSBS4Proc(quote):
     data = {}
     splits = quote.split(':')
@@ -337,23 +290,24 @@ def mfQuoteDataMWBS4Proc(quote):
     data = {}
     symbolSplits = quote.split(':')
     symbol = symbolSplits[0]
-    countryCode = symbolSplits[2]
-    url = 'https://www.marketwatch.com/investing/fund/%s?countrycode=%s' % (symbol, countryCode)
+    exchange = symbolSplits[1]
+    fundStart = 'https://www.marketwatch.com/investing/fund'
+    url = '%s/%s?iso=%s' % (fundStart, symbol, exchange)
+
     r = DS.getRequest(url)
-    statusCode = r.status_code
+    if r == None:
+        statusCode = 500
+    else:
+        statusCode = r.status_code
 
     if statusCode != 200:
-        return [statusCode, {}]
+        return [statusCode, None]
 
-    # check url redirection for useful data or no data at all
+    # only handle data if a fund was found
     urlRedirect = r.url
-    if 'search?' in urlRedirect:
-        # symbol was not found
-        return [statusCode, {}]
-    tail = urlRedirect.replace('https://www.marketwatch.com/','')
-    subdata = tail.split('/')
-    data['Type'] = subdata[1]
-    
+    if not urlRedirect.upper().startswith(fundStart.upper()):
+        return [statusCode, None]
+
     soup = BeautifulSoup(r.text, 'html.parser')
     
     primary = soup.find('div', {'class': 'region region--primary'})
@@ -368,7 +322,7 @@ def mfQuoteDataMWBS4Proc(quote):
                 foundData[splits[1]] = splits[2]
             continue
         elif name == '': continue
-        # logging.info('Unaccounted Data: %s' % name)
+        # print('Unaccounted Data: %s' % name)
 
     for table in primary.find_all('table'):
         for name in table.parent.text.split('\n'):
@@ -459,7 +413,7 @@ def mfQuoteDataMWBS4Proc(quote):
             data['Holdings'] = holdings
             continue
         elif name == '': continue
-        # logging.info('Unaccounted Data: %s' % name)
+        # print('Unaccounted Data: %s' % name)
     
     # # <span class="company__market">U.S.: Nasdaq</span>
     # market = soup.find_all('span', {'class': 'company__market'})
@@ -469,10 +423,74 @@ def mfQuoteDataMWBS4Proc(quote):
     foundData = cleanUpAttributes(foundData)
     for attr, value in foundData.items():
         data[attr] = value
-  
+
     return [statusCode, data]
 
 def mfHoldingsDataMWBS4Proc(quote):
+    data = {}
+    symbolSplits = quote.split(':')
+    symbol = symbolSplits[0]
+    exchange = symbolSplits[1]
+    fundStart = 'https://www.marketwatch.com/investing/fund'
+    url = '%s/%s/holdings?iso=%s' % (fundStart, symbol, exchange)
+
+    r = DS.getRequest(url)
+    if r == None:
+        statusCode = 500
+    else:
+        statusCode = r.status_code
+
+    if statusCode != 200:
+        return [statusCode, None]
+
+    # only handle data if a fund was found
+    urlRedirect = r.url
+    if not urlRedirect.upper().startswith(fundStart.upper()):
+        return [statusCode, None]
+
+    soup = BeautifulSoup(r.text, 'html.parser')
+    
+    # Asset allocation
+    assetAllocation = {}
+    table = soup.find('table', {'aria-label': 'Asset allocation data table'})
+    if table != None:
+        for tr in table.find_all('tr'):
+            tds = tr.find_all('td')
+            assetAllocation[tds[0].text] = tds[1].text
+    assetAllocation = cleanUpAttributes(assetAllocation)
+    data['AssetAllocation'] = {}
+    for attr, value in assetAllocation.items():
+        data['AssetAllocation'][attr] = value
+
+    # Sector allocation
+    sectorAllocation = {}
+    table = soup.find('table', {'aria-label': 'sector allocation data table'})
+    if table != None:
+        for tr in table.find_all('tr'):
+            tds = tr.find_all('td')
+            sectorAllocation[tds[0].text] = tds[1].text
+    sectorAllocation = cleanUpAttributes(sectorAllocation)
+    data['SectorAllocation'] = {}
+    for attr, value in sectorAllocation.items():
+        data['SectorAllocation'][attr] = value
+
+    # holdings
+    holdings = {}
+    div = soup.find('div', {'class': 'element element--table holdings'})
+    if div != None:
+        tbody = div.find('tbody')
+        if tbody != None:
+            for tr in tbody.find_all('tr'):
+                tds = tr.find_all('td')
+                holdings[tds[1].text] = tds[2].text
+    holdings = cleanUpAttributes(holdings, upper=True)
+    data['Holdings'] = {}
+    for attr, value in holdings.items():
+        data['Holdings'][attr] = value
+
+    return [200, data]
+
+def mfHoldingsDataMWBS4ProcOLD(quote):
     data = {}
     symbolSplits = quote.split(':')
     symbol = symbolSplits[0]
@@ -883,38 +901,6 @@ def getMFAddSimilarQuotesMSBS4(dataFileName):
     addCount = len(MFData[dataName].keys()) - mwQuoteCount
     logging.info('Added %s more quotes to %s' % (addCount, dataName))
 
-def getMFTypeMSBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
-    MFData = DS.getData(dataFileName)
-    dataName = 'MorningStarTypes'
-    if not 'Quotes' in MFData:
-        logging.info('No quotes found in data !')
-        return
-    if not dataName in MFData: MFData[dataName] = {}
-
-    todoQuotes = quotesNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days)
-
-    sTotal = len(todoQuotes)
-    for block in DS.makeMultiBlocks(todoQuotes, 300):
-        logging.info('symbols to scrape types with MorningStar: %s' % sTotal)
-        exchangeData = DS.multiScrape(block, mfTypeMSBS4Proc)
-
-        sIndex = 0
-        for data in exchangeData[1]:
-            quote = block[sIndex]
-            if not quote in MFData[dataName]: MFData[dataName][quote] = {}
-            MFData[dataName][quote]['ScrapeTag'] = datetime.now()
-            attribute = attributeCheck('Type')
-            if data != None:
-                data = data[:-1]
-            MFData[dataName][quote]['Type'] = data
-            sIndex += 1
-        
-        if not DS.saveData(MFData, dataFileName):
-            logging.info('%s: Stop saving data and exit program' % dataFileName)
-            exit(0)
-        
-        sTotal = sTotal - len(block)
-
 def getMFQuoteDataMSBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
     logging.info('Retrieving quote data of only funds in MorningStar')
     MFData = DS.getData(dataFileName)
@@ -955,28 +941,33 @@ def getMFQuoteDataMSBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
         sTotal = sTotal - len(block)
 
 def getMFQuoteDataMWBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
+    logging.info('Retrieving quote data of only funds in MarketWatch')
     MFData = DS.getData(dataFileName)
     dataName = 'MarketWatchQuoteData'
-    if not 'Quotes' in MFData:
-        logging.info('No quotes found in data !')
+    if not 'MorningStarQuoteData' in MFData:
+        logging.info('No MorningStarQuoteData found in data !')
         return
     if not dataName in MFData: MFData[dataName] = {}
 
-    todoQuotes = quotesNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days)
+    # update quotes that are in MorningStarQuoteData and that need to be updated
+    msQuotes = set(MFData['MorningStarQuoteData'].keys())
+    mwQuotesNotNeedScrape = set(quotesNeedScrape(MFData, dataName, needScrape=False, seconds=seconds, minutes=minutes, hours=hours, days=days))
+    quotes = list(msQuotes.difference(mwQuotesNotNeedScrape))
 
-    sTotal = len(todoQuotes)
-    for block in DS.makeMultiBlocks(todoQuotes, 100):
-        logging.info('quotes to scrape quote data with MarketWatch: %s' % sTotal)
-        quoteData = DS.multiScrape(block, mfQuoteDataMWBS4Proc, retryStatusCode=403)
+    sTotal = len(quotes)
+    for block in DS.makeMultiBlocks(quotes, 100):
+        logging.info('Quotes to scrape quote data with MarketWatch: %s' % sTotal)
+        results = DS.multiScrape(block, mfQuoteDataMWBS4Proc, retryStatusCode=403)
 
         sIndex = 0
-        for data in quoteData[1]:
+        for data in results[1]:
             quote = block[sIndex]
             if not quote in MFData[dataName]: MFData[dataName][quote] = {}
             MFData[dataName][quote]['ScrapeTag'] = datetime.now()
-            for attr, value in data.items():
-                attribute = attributeCheck(attr)
-                MFData[dataName][quote][attribute] = value
+            if data != None:
+                for attr, value in data.items():
+                    attribute = attributeCheck(attr)
+                    MFData[dataName][quote][attribute] = value
             sIndex += 1
 
         if not DS.saveData(MFData, dataFileName):
@@ -986,6 +977,42 @@ def getMFQuoteDataMWBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
         sTotal = sTotal - len(block)
 
 def getMFHoldingsDataMWBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
+    logging.info('Retrieving quote Holdings data of only funds in MarketWatch')
+    MFData = DS.getData(dataFileName)
+    dataName = 'MarketWatchHoldingsData'
+    if not 'MorningStarQuoteData' in MFData:
+        logging.info('No MorningStarQuoteData found in data !')
+        return
+    if not dataName in MFData: MFData[dataName] = {}
+
+    # update quotes that are in MorningStarQuoteData and that need to be updated
+    msQuotes = set(MFData['MorningStarQuoteData'].keys())
+    mwQuotesNotNeedScrape = set(quotesNeedScrape(MFData, dataName, needScrape=False, seconds=seconds, minutes=minutes, hours=hours, days=days))
+    quotes = list(msQuotes.difference(mwQuotesNotNeedScrape))
+
+    sTotal = len(quotes)
+    for block in DS.makeMultiBlocks(quotes, 100):
+        logging.info('Quotes to scrape quote Holdings data with MarketWatch: %s' % sTotal)
+        results = DS.multiScrape(block, mfHoldingsDataMWBS4Proc, retryStatusCode=403)
+
+        sIndex = 0
+        for data in results[1]:
+            quote = block[sIndex]
+            if not quote in MFData[dataName]: MFData[dataName][quote] = {}
+            MFData[dataName][quote]['ScrapeTag'] = datetime.now()
+            if data != None:
+                for attr, value in data.items():
+                    attribute = attributeCheck(attr)
+                    MFData[dataName][quote][attribute] = value
+            sIndex += 1
+
+        if not DS.saveData(MFData, dataFileName):
+            logging.info('%s: Stop saving data and exit program' % dataFileName)
+            exit(0)
+        
+        sTotal = sTotal - len(block)
+
+def getMFHoldingsDataMWBS4OLD(dataFileName, seconds=0, minutes=0, hours=0, days=0):
     MFData = DS.getData(dataFileName)
     dataName = 'MarketWatchHoldingsData'
     if not 'Quotes' in MFData:
@@ -1220,7 +1247,7 @@ def getMFQuoteDataETAPI(dataFileName, seconds=0, minutes=0, hours=0, days=0):
 if __name__ == "__main__":
     scrapedFileName = 'MF_DATA_SCRAPED'
     historyUpdateDays = 10
-    DS.setupLogging('MFDataScrape.log', timed=True, new=False)
+    DS.setupLogging('MFDataScrape.log', timed=True, new=True)
 
     # # copy Base Data to Mutual Fund Data
     # getMFBASEData(scrapedFileName)
@@ -1237,48 +1264,29 @@ if __name__ == "__main__":
     # # 40794 quotes = 00:40:32
     # getMFQuoteDataMSBS4(scrapedFileName, days=historyUpdateDays)
 
+    # # get quote data from MarketWatch
+    # # 37037 quotes = 07:09:45
+    # getMFQuoteDataMWBS4(scrapedFileName, days=historyUpdateDays)
     
+    # get holdings data from MarketWatch
+    # slow because of blocking
+    getMFHoldingsDataMWBS4(scrapedFileName, days=historyUpdateDays)
+
     
     # MFData = DS.getData(scrapedFileName)
 
     # print(len(MFData['MarketWatchQuotes']))
     # print(len(MFData['MorningStarQuoteData']))
+    # print(len(MFData['MarketWatchQuoteData']))
 
-    # funds = 0
-    # etfs = 0
-    # cefs = 0
-    # for quote, data in MFData['MorningStarQuoteData'].items():
-    #     if data['FundType'] == 'FUND':
-    #         funds += 1
-    #         logging.info('%s: %s' % (quote, MFData['MarketWatchQuotes'][quote]['Name']))
-    #     elif data['FundType'] == 'ETF':
-    #         etfs += 1
-    #     elif data['FundType'] == 'CEF':
-    #         cefs += 1
-    # print(funds)
-    # print(etfs)
-    # print(cefs)
+    # for quote, data in MFData['MarketWatchQuoteData'].items():
+    #     if len(data) < 2:
+    #         logging.info('%s: %s' % (quote, data))
 
-    # MFData.pop('MarketWatchQuotes')
+    # MFData.pop('MarketWatchQuoteData')
     # DS.saveData(MFData, scrapedFileName)
 
-    # 'FUNDS', 'CEFS', 'ETFS', 'STOCKS'
-    # 'https://www.morningstar.com/%s/%s/%s/quote' % (msType, exchange, symbol)
-    # https://www.morningstar.com/FUNDS/XLON/WCLD/quote
 
-
-    # # get investment type fom MorningStar links
-    # # fast (1h 23 min for 38043 quotes) (29 min for 38040 quotes)
-    # getMFTypeMSBS4(scrapedFileName, days=historyUpdateDays)
-
-
-    # # get quote data from MarketWatch
-    # # slow because of blocking
-    # getMFQuoteDataMWBS4(scrapedFileName, days=historyUpdateDays)
-
-    # # get holdings data from MarketWatch
-    # # slow because of blocking
-    # getMFHoldingsDataMWBS4(scrapedFileName, days=historyUpdateDays)
 
     # # get quote data from YahooFinance
     # # slow because of blocking

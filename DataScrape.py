@@ -100,11 +100,17 @@ def getRequest(url, maxRetries=10):
 def getStatusCode(url, maxRetries=10):
     headers =  {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36'}
     statusCode = 500
-    retries = -1
+    retries = 0
+    r = None
     while(retries < maxRetries and statusCode == 500):
         retries = retries + 1
-        r = requests.get(url, headers=headers, allow_redirects=False)
-        statusCode = r.status_code
+        try:
+            r = requests.get(url, headers=headers)
+            statusCode = r.status_code
+        except:
+            r = None
+        # r = requests.get(url, headers=headers, allow_redirects=False)
+        # statusCode = r.status_code
     return statusCode    
 
 def getStatusCodes(urls):

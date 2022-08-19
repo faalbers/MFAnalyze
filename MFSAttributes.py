@@ -1,6 +1,5 @@
 import DataScrape as DS
 import logging
-import ExchangeInfo as EI
 
 attributeDocs = {
     'CISOs': {
