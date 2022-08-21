@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>969</width>
-    <height>537</height>
+    <height>632</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -129,7 +129,7 @@
        <item>
         <widget class="QLabel" name="label">
          <property name="text">
-          <string>Countries</string>
+          <string>Exchange Market Countries</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignCenter</set>
@@ -251,7 +251,7 @@
      <number>0</number>
     </property>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
       <x>780</x>
@@ -283,7 +283,7 @@
      </item>
     </layout>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
       <x>450</x>
@@ -511,12 +511,12 @@
      </item>
     </layout>
    </widget>
-   <widget class="QWidget" name="">
+   <widget class="QWidget" name="layoutWidget">
     <property name="geometry">
      <rect>
-      <x>190</x>
+      <x>160</x>
       <y>310</y>
-      <width>177</width>
+      <width>241</width>
       <height>86</height>
      </rect>
     </property>
@@ -526,7 +526,7 @@
        <item>
         <widget class="QCheckBox" name="minYieldCheck">
          <property name="text">
-          <string>Yield &gt;</string>
+          <string>Yield &gt;=</string>
          </property>
         </widget>
        </item>
@@ -550,7 +550,7 @@
        <item>
         <widget class="QCheckBox" name="maxExpenseCheck">
          <property name="text">
-          <string>Expense Ratio &lt;</string>
+          <string>Expense Ratio &lt;=</string>
          </property>
         </widget>
        </item>
@@ -574,7 +574,7 @@
        <item>
         <widget class="QCheckBox" name="maxInvestCheck">
          <property name="text">
-          <string>Min Invest &lt;</string>
+          <string>Min Invest &lt;=</string>
          </property>
         </widget>
        </item>
@@ -588,6 +588,70 @@
          </property>
          <property name="value">
           <double>10000.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </widget>
+   <widget class="QWidget" name="layoutWidget_2">
+    <property name="geometry">
+     <rect>
+      <x>160</x>
+      <y>410</y>
+      <width>241</width>
+      <height>161</height>
+     </rect>
+    </property>
+    <layout class="QVBoxLayout" name="verticalLayout_9">
+     <item>
+      <widget class="QLabel" name="label_6">
+       <property name="text">
+        <string>Fund Types</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QScrollArea" name="scrollArea_3">
+       <property name="widgetResizable">
+        <bool>true</bool>
+       </property>
+       <widget class="QWidget" name="fundTypeContents">
+        <property name="geometry">
+         <rect>
+          <x>0</x>
+          <y>0</y>
+          <width>237</width>
+          <height>103</height>
+         </rect>
+        </property>
+       </widget>
+      </widget>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="horizontalLayout_6">
+       <item>
+        <widget class="QPushButton" name="selAllFundType">
+         <property name="text">
+          <string>Select All</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="unSelAllFundType">
+         <property name="text">
+          <string>Unselect All</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="showAllFundType">
+         <property name="text">
+          <string>Show All</string>
          </property>
         </widget>
        </item>

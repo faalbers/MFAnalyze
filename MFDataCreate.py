@@ -29,7 +29,8 @@ if __name__ == "__main__":
             'Symbol': None,
             'Name': None,
             'Country': None,
-            'CISO': None
+            'CISO': None,
+            'Type': None
         }
         MFData['Quotes'][quote]['Fund'] = fund
 
@@ -45,6 +46,8 @@ if __name__ == "__main__":
             'MinInvestment': None,
             'Yield': None,
             'Rating': None,
+            'ETradeAvailbility': None,
+            'MorningStarRating': None,
             'Expense': {
                 'NetExpenseRatio': None,
                 'TotalExpenseRatio': None,
@@ -85,9 +88,8 @@ if __name__ == "__main__":
         exchange['Country'] = MFSData['CISOs'][exchange['CISO']]
 
         # handle MarketWatchQuoteData
-        dataName = 'MarketWatchQuoteData'
-        if dataName in MFSData:
-            qdata = MFSData[dataName][quote]
+        if 'MarketWatchQuoteData' in MFSData:
+            qdata = MFSData['MarketWatchQuoteData'][quote]
             if 'MinInvestment' in qdata and qdata['MinInvestment'] != None:
                 data['MinInvestment'] = qdata['MinInvestment'][0]
 
@@ -100,7 +102,8 @@ if __name__ == "__main__":
             if 'TotalExpenseRatio' in qdata and qdata['TotalExpenseRatio'] != None:
                 data['Expense']['TotalExpenseRatio'] = qdata['TotalExpenseRatio'][0]
 
-            # handle MorningStarQuoteData
+        # handle MorningStarQuoteData
+        if 'MorningStarQuoteData' in MFSData:
             qdata = MFSData['MorningStarQuoteData'][quote]
             if 'CreditQuality' in qdata:
                 data['Bonds']['CreditQuality'] = qdata['CreditQuality']
@@ -113,6 +116,9 @@ if __name__ == "__main__":
 
             if 'Rating' in qdata:
                 data['MorningStarRating'] = qdata['Rating']
+
+            if 'FundType' in qdata:
+                fund['Type'] = qdata['FundType']
 
             if 'ExpenseRatio' in qdata and qdata['ExpenseRatio'] != '—':
                 if type(qdata['ExpenseRatio']) == list:
@@ -156,10 +162,9 @@ if __name__ == "__main__":
         # if 'BALANCED' in data['Name'].upper() and 'RISK' in data['Name'].upper():
         #     data['Strategies'].add('BALANCEDRISK')
 
-        # handle MarketWatchQuoteData
-        dataName = 'MarketWatchHoldingsData'
-        if dataName in MFSData:
-            qdata = MFSData[dataName][quote]
+        # handle MarketWatchHoldingsData
+        if 'MarketWatchHoldingsData' in MFSData:
+            qdata = MFSData['MarketWatchHoldingsData'][quote]
             # Marketwatch Allocation data seemed more reliable then YahooFinance
             # because totals where closer to 100%
             if 'AssetAllocation' in qdata:
@@ -175,46 +180,26 @@ if __name__ == "__main__":
                 if 'Cash' in adata:
                     data['AssetAllocation']['Cash'] = adata['Cash'][0]
 
-                stocksAmount = data['AssetAllocation']['Stocks']
-                bondsAmount = data['AssetAllocation']['Bonds']
-                if stocksAmount != None and bondsAmount != None:
-                    if stocksAmount >= 0.0 and stocksAmount <= 100.0:
-                        if bondsAmount >= 0.0 and bondsAmount <= 100.0:
-                            total = bondsAmount+stocksAmount
-                            if total != 0.0:
-                                data['AssetAllocation']['StocksBondsRatio'] = (stocksAmount / total) * 100.0
-
+                stocksAmount =  0.0
+                if data['AssetAllocation']['Stocks'] != None:
+                    stocksAmount = data['AssetAllocation']['Stocks']
+                if stocksAmount >= 0.0 and stocksAmount <= 100.0:
+                    bondsAmount =  0.0
+                    if data['AssetAllocation']['Bonds'] != None:
+                        bondsAmount = data['AssetAllocation']['Bonds']
+                    if bondsAmount >= 0.0 and bondsAmount <= 100.0:
+                        total = bondsAmount+stocksAmount
+                        if total != 0.0:
+                            data['AssetAllocation']['StocksBondsRatio'] = (stocksAmount / total) * 100.0
         
-        # # handle MarketWatchHoldingsData
-        # if quote in MFSData['MarketWatchHoldingsData']:
-        #     qdata = MFSData['MarketWatchHoldingsData'][quote]
-
-
-        
-        # # # Add BALANCED strategy
-        # # # I might reconsider this
-        # # if stocksBondsRatio != None:
-        # #     if stocksBondsRatio > 25.0 and stocksBondsRatio < 75.0:
-        # #         data['Strategies'].add('BALANCED')
-
-        # # etrade data
-        # if quote in MFSData['ETradeQuoteData']:
-        #     qdata = MFSData['ETradeQuoteData'][quote]
-        #     if 'MutualFund' in qdata and qdata['MutualFund']['availability'] == 'Open to New Buy and Sell':
-        #         etradeAvailable = 'Open'
-        #     else:
-        #         etradeAvailable = 'Close'
-        
-        # add found vars
-        # # data['StocksBondsRatio'] = stocksBondsRatio
-        # data['BondStyle'] = bondStyle
-        # data['StockStyle'] = stockStyle
-        # data['MorningStarRating'] = morningStarRating
-        # data['MinInvestment'] = minInvestment
-        # data['Yield'] = Yield
-        # data['ExpenseRatio'] = expenseRatio
-        # data['AssetAllocation'] = allocations
-        # data['ETradeAvailable'] = etradeAvailable
+        # etrade data
+        if 'ETradeQuoteData' in MFSData:
+            qdata = MFSData['ETradeQuoteData'][quote]
+            if 'MutualFund' in qdata:
+                if qdata['MutualFund']['availability'] == 'Open to New Buy and Sell':
+                    data['ETradeAvailbility'] = 'Open'
+                else:
+                    data['ETradeAvailbility'] = 'Close'
         
     print(values)
 
@@ -225,6 +210,6 @@ if __name__ == "__main__":
             logging.info('%s: %s' % (attribute,value))
         logging.info('')
     
-    # if not DS.saveData(MFData, dataFileName):
-    #     logging.info('%s: Stop saving data and exit program' % dataFileName)
-    #     exit(0)
+    if not DS.saveData(MFData, dataFileName):
+        logging.info('%s: Stop saving data and exit program' % dataFileName)
+        exit(0)

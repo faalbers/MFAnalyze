@@ -13,25 +13,25 @@ class MFWindow(QMainWindow):
         self.MFData = DS.getData(dataFileName)
 
         self.MFData['CountryToExchanges'] = {}
-        for quote, data in self.MFData['Quotes'].items():
-            if data['Exchange'] == None: continue
-            if data['Country'] == None: continue
-            if not data['Country'] in self.MFData['CountryToExchanges']:
-                self.MFData['CountryToExchanges'][data['Country']] = set()
-            self.MFData['CountryToExchanges'][data['Country']].add(data['Exchange'])
-        
         self.MFData['ExchangeToCountries'] = {}
+        self.MFData['FundTypes'] = set()
         for quote, data in self.MFData['Quotes'].items():
-            if data['Exchange'] == None: continue
-            if data['Country'] == None: continue
-            if not data['Exchange'] in self.MFData['ExchangeToCountries']:
-                self.MFData['ExchangeToCountries'][data['Exchange']] = set()
-            self.MFData['ExchangeToCountries'][data['Exchange']].add(data['Country'])
+            if not data['Exchange']['Country'] in self.MFData['CountryToExchanges']:
+                self.MFData['CountryToExchanges'][data['Exchange']['Country']] = set()
+            self.MFData['CountryToExchanges'][data['Exchange']['Country']].add(data['Exchange']['Name'])
+            
+            if not data['Exchange']['Name'] in self.MFData['ExchangeToCountries']:
+                self.MFData['ExchangeToCountries'][data['Exchange']['Name']] = set()
+            self.MFData['ExchangeToCountries'][data['Exchange']['Name']].add(data['Exchange']['Country'])
+
+            self.MFData['FundTypes'].add(data['Fund']['Type'])
         
         self.countryChecks = QVBoxLayout()
         self.exchangeChecks = QVBoxLayout()
+        self.fundTypeChecks = QVBoxLayout()
         self.allCountries()
         self.allExchanges()
+        self.allFundTypes()
 
         self.bondsStocksCheck.setStyleSheet('margin-left:200;');
         self.bondsStocksCheck.setChecked(False)
@@ -58,6 +58,25 @@ class MFWindow(QMainWindow):
         self.msRatingNA.setChecked(True)
 
         self.makeData.clicked.connect(self.updateQuotes)
+
+    def buildFundTypesCheckList(self):
+        for i in reversed(range(self.fundTypeChecks.count())): 
+            self.fundTypeChecks.itemAt(i).widget().setParent(None)
+        for fundType in self.fundTypes:
+            checkBox = QCheckBox(fundType)
+            checkBox.setChecked(True)
+            # checkBox.stateChanged.connect(self.countriesChanged)
+            self.fundTypeChecks.addWidget(checkBox)
+        self.fundTypeContents.setLayout(self.fundTypeChecks)
+        # self.selAllCountries.clicked.connect(self.checkAllCountries)
+        # self.unSelAllCountries.clicked.connect(self.uncheckAllCountries)
+        # self.showAllCountries.clicked.connect(self.allCountriesClick)
+        # # self.updateQuotes()
+
+    def allFundTypes(self):
+        self.fundTypes = list(self.MFData['FundTypes'])
+        self.fundTypes.sort()
+        self.buildFundTypesCheckList()
 
     def buildCountriesCheckList(self):
         for i in reversed(range(self.countryChecks.count())): 
@@ -172,27 +191,11 @@ class MFWindow(QMainWindow):
             self.minSBRatio.setValue(value)
     
     def updateQuotes(self):
-        countryCodes = set()
-        for i in range(self.countryChecks.count()):
-            widget = self.countryChecks.itemAt(i).widget()
-            if widget.isChecked() == True:
-                for countryCode, country in self.MFData['CountryCodes'].items():
-                    if self.countries[i] == country:
-                        countryCodes.add(countryCode)
-
-        exchangeCodes = set()
+        exchangeNames = set()
         for i in range(self.exchangeChecks.count()):
             widget = self.exchangeChecks.itemAt(i).widget()
             if widget.isChecked() == True:
-                for exchangeCode, exchange in self.MFData['ExchangeCodes'].items():
-                    if self.exchanges[i] == exchange:
-                        exchangeCodes.add(exchangeCode)
-        
-        quoteEnds = set()
-        for exchangeCode in exchangeCodes:
-            for countryCode in countryCodes:
-                quoteEnds.add(':%s:%s' % (exchangeCode, countryCode))
-        # print(quoteEnds)
+                exchangeNames.add(self.exchanges[i])
 
         stockCap = self.capCombo.currentText()
         stockStyle = self.styleCombo.currentText()
@@ -212,59 +215,53 @@ class MFWindow(QMainWindow):
         minSBRatio = float(self.minSBRatio.value())
         maxSBRatio = float(self.maxSBRatio.value())
 
+        fundTypes = set()
+        for i in range(self.fundTypeChecks.count()):
+            widget = self.fundTypeChecks.itemAt(i).widget()
+            if widget.isChecked() == True:
+                fundTypes.add(self.fundTypes[i])
+
         quotes = []
         for quote, data in self.MFData['Quotes'].items():
-            quoteEnd = quote.split(':')
-            quoteEnd = ':%s:%s' % (quoteEnd[1], quoteEnd[2])
-            if not quoteEnd in quoteEnds: continue
+            if not data['Exchange']['Name'] in exchangeNames: continue
 
-            if not data['MorningStarRating'] in ratings: continue
+            if not data['Data']['MorningStarRating'] in ratings: continue
+            
+            if not data['Fund']['Type'] in fundTypes: continue
 
             if self.bondsStocksCheck.isChecked():
-                adata = data['AssetAllocation']
-                if adata == None: continue
-                if adata['Stocks'] < 0.0 or adata['Bonds'] < 0.0: continue
-                total = adata['Stocks'] + adata['Bonds']
-                if total == 0.0: continue
-                stocks = (adata['Stocks']/total)*100.0
-                # bonds = (adata['Bonds']/total)*100.0
-                if not (stocks >= minSBRatio and stocks <= maxSBRatio): continue
+                sbRatio = data['Data']['AssetAllocation']['StocksBondsRatio']
+                if sbRatio == None: continue
+                if not (sbRatio >= minSBRatio and sbRatio <= maxSBRatio): continue
 
             if self.minYieldCheck.isChecked():
-                if data['Yield'] == None: continue
-                elif data['Yield'] < self.minYield.value(): continue
+                if data['Data']['Yield'] == None: continue
+                if data['Data']['Yield'] < self.minYield.value(): continue
 
             if self.maxExpenseCheck.isChecked():
-                if data['ExpenseRatio'] == None: continue
-                elif data['ExpenseRatio'] > self.maxExpense.value(): continue
-
+                edata = data['Data']['Expense']
+                if edata['NetExpenseRatio'] == None and edata['AdjExpenseRatio'] == None: continue
+                expenseRatio = 0.0
+                if edata['NetExpenseRatio'] != None and edata['NetExpenseRatio'] > expenseRatio:
+                    expenseRatio = edata['NetExpenseRatio']
+                if edata['AdjExpenseRatio'] != None and edata['AdjExpenseRatio'] > expenseRatio:
+                    expenseRatio = edata['AdjExpenseRatio']
+                if expenseRatio > self.maxExpense.value(): continue
+            
             if self.maxInvestCheck.isChecked():
-                if data['MinInvestment'] == None: continue
-                elif data['MinInvestment'] > self.maxInvest.value(): continue
+                if data['Data']['MinInvestment'] != None and data['Data']['MinInvestment'] > self.maxInvest.value(): continue
 
             if stockCap != 'N/A':
-                if data['StockStyle'] == None:
-                    continue
-                elif data['StockStyle']['Cap'] != stockCap:
-                    continue
+                if data['Data']['Stocks']['Cap'] != stockCap: continue
 
             if stockStyle != 'N/A':
-                if data['StockStyle'] == None:
-                    continue
-                elif data['StockStyle']['Style'] != stockStyle:
-                    continue
+                if data['Data']['Stocks']['Style'] != stockStyle: continue
 
             if bondCreditQ != 'N/A':
-                if data['BondStyle'] == None:
-                    continue
-                elif data['BondStyle']['CreditQuality'] != bondCreditQ:
-                    continue
+                if data['Data']['Bonds']['CreditQuality'] != bondCreditQ: continue
 
             if bondInterestRateS != 'N/A':
-                if data['BondStyle'] == None:
-                    continue
-                elif data['BondStyle']['InterestRateSensitivity'] != bondInterestRateS:
-                    continue
+                if data['Data']['Bonds']['InterestRateSensitivity'] != bondInterestRateS: continue
             
             quotes.append(quote)
 
@@ -273,6 +270,80 @@ class MFWindow(QMainWindow):
         if self.doSaveCSV.isChecked(): self.saveCSV(quotes)
 
     def saveCSV(self, quotes):
+        CSVFileName = 'MF_ANALYZE_DATA.csv'
+        out = ''
+        out += 'Symbol, Name, Type, MSRating,'
+        out += 'ExpenseRatio %, Yield %,'
+        out += 'Stocks %, Cap, Style,'
+        out += 'Bonds %, CreditQuality, InterestRateSensitivity,'
+        out += 'MinInvestment, ETrade,'
+        out += 'Exchange'
+        out += '\n'
+
+        for quote in quotes:
+            fund = self.MFData['Quotes'][quote]['Fund']
+            exchange = self.MFData['Quotes'][quote]['Exchange']
+            data = self.MFData['Quotes'][quote]['Data']
+
+            symbol = '"%s"' % fund['Symbol']
+            name = '"%s"' % fund['Name']
+            ftype = '"%s"' % fund['Type']
+            exchangeName = '"%s"' % exchange['Name']
+
+            msrating = 'N/A'
+            if data['MorningStarRating'] != None: msrating = data['MorningStarRating']
+            
+            expenseRatio = 'N/A'
+            edata = data['Expense']
+            if not (edata['NetExpenseRatio'] == None and edata['AdjExpenseRatio'] == None):
+                expenseRatio = 0.0
+                if edata['NetExpenseRatio'] != None and edata['NetExpenseRatio'] > expenseRatio:
+                    expenseRatio = edata['NetExpenseRatio']
+                if edata['AdjExpenseRatio'] != None and edata['AdjExpenseRatio'] > expenseRatio:
+                    expenseRatio = edata['AdjExpenseRatio']
+
+            Yield = 'N/A'
+            if data['Yield'] != None: Yield = data['Yield']
+
+            mininvest = 'N/A'
+            if data['MinInvestment'] != None: mininvest = data['MinInvestment']
+
+            etradeAvailable = 'N/A'
+            if data['ETradeAvailbility'] != None: etradeAvailable = '"%s"' % data['ETradeAvailbility']
+
+            aadata = data['AssetAllocation']
+            stocks = 'N/A'
+            if aadata['Stocks'] != None: stocks = aadata['Stocks']
+            
+            bonds = 'N/A'
+            if aadata['Bonds'] != None: bonds = aadata['Bonds']
+
+            sdata = data['Stocks']
+            cap = 'N/A'
+            if sdata['Cap'] != None: cap = sdata['Cap']
+            
+            style = 'N/A'
+            if sdata['Style'] != None: style = sdata['Style']
+
+            bdata = data['Bonds']
+            cquality = 'N/A'
+            if bdata['CreditQuality'] != None: cquality = bdata['CreditQuality']
+            
+            irsensitivity = 'N/A'
+            if bdata['InterestRateSensitivity'] != None: irsensitivity = bdata['InterestRateSensitivity']
+
+            out += '%s,%s,%s,%s,' % (symbol, name, ftype, msrating)
+            out += '%s,%s,' % (expenseRatio, Yield)
+            out += '%s,%s,%s,' % (stocks, cap, style)
+            out += '%s,%s,%s,' % (bonds, cquality, irsensitivity)
+            out += '%s,%s,' % (mininvest, etradeAvailable)
+            out += '%s' % (exchangeName)
+            out += '\n'
+
+        with open(CSVFileName, 'w') as f:
+            f.write(out)
+    
+    def saveCSVOLD(self, quotes):
         CSVFileName = 'MF_ANALYZE_DATA.csv'
         out = ''
         out += 'Symbol, Name, Country,'

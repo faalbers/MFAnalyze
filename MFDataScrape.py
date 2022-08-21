@@ -1012,23 +1012,45 @@ def getMFHoldingsDataMWBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
         
         sTotal = sTotal - len(block)
 
-def getMFHoldingsDataMWBS4OLD(dataFileName, seconds=0, minutes=0, hours=0, days=0):
+def getMFQuoteDataETAPI(dataFileName, seconds=0, minutes=0, hours=0, days=0):
+    logging.info('Retrieving quote data of only funds in ETrade')
     MFData = DS.getData(dataFileName)
-    dataName = 'MarketWatchHoldingsData'
-    if not 'Quotes' in MFData:
-        logging.info('No quotes found in data !')
+    dataName = 'ETradeQuoteData'
+    if not 'MorningStarQuoteData' in MFData:
+        logging.info('No MorningStarQuoteData found in data !')
         return
     if not dataName in MFData: MFData[dataName] = {}
 
-    todoQuotes = quotesNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days)
+    # update quotes that are in MorningStarQuoteData and that need to be updated
+    msQuotes = set(MFData['MorningStarQuoteData'].keys())
+    mwQuotesNotNeedScrape = set(quotesNeedScrape(MFData, dataName, needScrape=False, seconds=seconds, minutes=minutes, hours=hours, days=days))
+    quotes = list(msQuotes.difference(mwQuotesNotNeedScrape))
 
-    sTotal = len(todoQuotes)
-    for block in DS.makeMultiBlocks(todoQuotes, 100):
-        logging.info('quotes to scrape holdings data with MarketWatch: %s' % sTotal)
-        results = DS.multiScrape(block, mfHoldingsDataMWBS4Proc, retryStatusCode=403)
+    usFundQuotes = []
+    usOtherQuotes = []
+    for quote in quotes:
+        exchange = quote.split(':')[1]
+        CIOS = list(MFData['MICToCISO'][quote.split(':')[1]])[0]
+        if CIOS == 'US':
+            if MFData['MorningStarQuoteData'][quote]['FundType'] == 'FUND':
+                usFundQuotes.append(quote)
+            else:
+                usOtherQuotes.append(quote)
+        else:
+            MFData[dataName][quote] = {}
+            MFData[dataName][quote]['ScrapeTag'] = datetime.now()
+
+    if (len(usFundQuotes) + len(usOtherQuotes)) == 0: return
+    session = ET.getSession()
+
+    sTotal = len(usFundQuotes)
+    for block in DS.makeMultiBlocks(usFundQuotes, 20):
+        logging.info('Fund Quotes to scrape data with ETrade API: %s' % sTotal)
+        symbols = [quote.split(':')[0] for quote in block]
+        results = ET.multiQuotes(symbols, session, detailFlag='MF_DETAIL')
 
         sIndex = 0
-        for data in results[1]:
+        for data in results:
             quote = block[sIndex]
             if not quote in MFData[dataName]: MFData[dataName][quote] = {}
             MFData[dataName][quote]['ScrapeTag'] = datetime.now()
@@ -1039,9 +1061,35 @@ def getMFHoldingsDataMWBS4OLD(dataFileName, seconds=0, minutes=0, hours=0, days=
 
         if not DS.saveData(MFData, dataFileName):
             logging.info('%s: Stop saving data and exit program' % dataFileName)
+            ET.endSession(session)
             exit(0)
         
         sTotal = sTotal - len(block)
+    
+    sTotal = len(usOtherQuotes)
+    for block in DS.makeMultiBlocks(usOtherQuotes, 20):
+        logging.info('Other Quotes to scrape data with ETrade API: %s' % sTotal)
+        symbols = [quote.split(':')[0] for quote in block]
+        results = ET.multiQuotes(symbols, session)
+
+        sIndex = 0
+        for data in results:
+            quote = block[sIndex]
+            if not quote in MFData[dataName]: MFData[dataName][quote] = {}
+            MFData[dataName][quote]['ScrapeTag'] = datetime.now()
+            for attr, value in data.items():
+                attribute = attributeCheck(attr)
+                MFData[dataName][quote][attribute] = value
+            sIndex += 1
+
+        if not DS.saveData(MFData, dataFileName):
+            logging.info('%s: Stop saving data and exit program' % dataFileName)
+            ET.endSession(session)
+            exit(0)
+        
+        sTotal = sTotal - len(block)
+
+    ET.endSession(session)
 
 def getMFQuoteDataYFBS4(dataFileName, seconds=0, minutes=0, hours=0, days=0):
     MFData = DS.getData(dataFileName)
@@ -1151,6 +1199,7 @@ def getMFQuoteInfoYF(dataFileName, seconds=0, minutes=0, hours=0, days=0):
         
         sTotal = sTotal - len(block)
 
+
 # def getMFHoldingsDataMSSEL(dataFileName, seconds=0, minutes=0, hours=0, days=0):
 #     MFData = DS.getData(dataFileName)
 #     dataName = 'MorningStarHoldingsData'
@@ -1206,48 +1255,10 @@ def getMFQuoteInfoYF(dataFileName, seconds=0, minutes=0, hours=0, days=0):
 
 #     DS.quitWebDrivers(drivers)
 
-def getMFQuoteDataETAPI(dataFileName, seconds=0, minutes=0, hours=0, days=0):
-    MFData = DS.getData(dataFileName)
-    dataName = 'ETradeQuoteData'
-    if not 'Quotes' in MFData:
-        logging.info('No quotes found in data !')
-        return
-    if not dataName in MFData: MFData[dataName] = {}
-
-    todoQuotes = quotesNeedScrape(MFData, dataName, seconds=seconds, minutes=minutes, hours=hours, days=days)
-
-    if len(todoQuotes) == 0: return
-    session = ET.getSession()
-
-    sTotal = len(todoQuotes)
-    for block in DS.makeMultiBlocks(todoQuotes, 10):
-        symbols = [quote.split(':')[0] for quote in block]
-        logging.info('quotes to scrape data with with ETrade API: %s' % sTotal)
-        quoteData = ET.multiQuotes(symbols, session, detailFlag='MF_DETAIL')
-
-        sIndex = 0
-        for data in quoteData:
-            quote = block[sIndex]
-            if not quote in MFData[dataName]: MFData[dataName][quote] = {}
-            MFData[dataName][quote]['ScrapeTag'] = datetime.now()
-            for attr, value in data.items():
-                attribute = attributeCheck(attr)
-                MFData[dataName][quote][attribute] = value
-            sIndex += 1
-        
-        if not DS.saveData(MFData, dataFileName):
-            logging.info('%s: Stop saving data and exit program' % dataFileName)
-            ET.endSession(session)
-            exit(0)
-        
-        sTotal = sTotal - len(block)
-    
-    ET.endSession(session)
-
 if __name__ == "__main__":
     scrapedFileName = 'MF_DATA_SCRAPED'
-    historyUpdateDays = 10
-    DS.setupLogging('MFDataScrape.log', timed=True, new=True)
+    historyUpdateDays = 0
+    DS.setupLogging('MFDataScrape.log', timed=False, new=True)
 
     # # copy Base Data to Mutual Fund Data
     # getMFBASEData(scrapedFileName)
@@ -1268,11 +1279,20 @@ if __name__ == "__main__":
     # # 37037 quotes = 07:09:45
     # getMFQuoteDataMWBS4(scrapedFileName, days=historyUpdateDays)
     
-    # get holdings data from MarketWatch
-    # slow because of blocking
-    getMFHoldingsDataMWBS4(scrapedFileName, days=historyUpdateDays)
+    # # get holdings data from MarketWatch
+    # # slow because of blocking
+    # getMFHoldingsDataMWBS4(scrapedFileName, days=historyUpdateDays)
 
+    # # get holdings data from ETrade API
+    # # 26581 quotes = 01:06:40
+    # getMFQuoteDataETAPI(scrapedFileName, days=historyUpdateDays)
     
+    session = ET.getSession()
+
+    logging.info(ET.getQuoteProc([['VITAX', 'FUNDAMENTAL', False], session]))
+
+    ET.endSession(session)
+
     # MFData = DS.getData(scrapedFileName)
 
     # print(len(MFData['MarketWatchQuotes']))
@@ -1304,6 +1324,3 @@ if __name__ == "__main__":
     # # get holdings data from MorningStar, needs Selenium drivers
     # getMFHoldingsDataMSSEL(scrapedFileName, days=historyUpdateDays)
 
-    # # get holdings data from YahooFinance
-    # # slow because of blocking
-    # getMFQuoteDataETAPI(scrapedFileName, days=historyUpdateDays)
